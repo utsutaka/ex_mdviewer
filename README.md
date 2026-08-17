@@ -9,12 +9,12 @@
 | `npm run start` | `electron-vite preview` | 再ビルドしてからアプリを起動し、動作確認する（事前に`npm run build`を実行しておく必要はない） |
 | `npm run pack` | `electron-vite build && node scripts/pack.mjs` | 再ビルドし、Electron本体を含む配布用ZIP（`release/mdviewer.zip`）を作成する。別PCにNode.jsが入っていなくても、解凍後`mdviewer.bat`をダブルクリックするだけで起動できる |
 | `npm run cleanup` | `node scripts/cleanup.mjs` | `out/`・`release/`・`dist/`を削除する |
-| `npm test` | `vitest run` | ユニットテストを実行する |
+| `npm test` | `vitest run` | ユニットテストを実行する（現時点ではテスト未整備） |
 | `npm run typecheck` | `tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json` | 型チェックを実行する |
 
 `build`・`start`・`pack`はいずれも実行のたびに`out/`を自動的にクリーンアップしてから再生成する（Vite標準の`emptyOutDir`挙動）。手動でのクリーンアップが必要な場合は`npm run cleanup`を使う。
 
-constitutionの配布方針（原則III）により、electron-builder等によるEXE化・インストーラー作成は行わない。
+配布方針として、electron-builder等によるEXE化・インストーラー作成は行わない。
 
 ## フォルダ構成
 
@@ -22,25 +22,18 @@ constitutionの配布方針（原則III）により、electron-builder等によ�
 
 | フォルダ | 分類 | 解説 |
 |---|---|---|
-| `.claude` | 恒久 | Claude Code用の設定・スキル定義（`speckit-*`等）を格納。開発ワークフローの一部として継続利用 |
 | `.git` | 恒久 | Gitリポジトリ本体（コミット履歴等）。バージョン管理に必須 |
-| `.specify` | 恒久 | Spec-Kitの憲章（`constitution.md`）・スクリプト・テンプレート。プロジェクトの意思決定基盤 |
-| `.temp` | 一時 | `CLAUDE.md`ルール10で定義された一時ファイル置き場。使ったら削除する運用が前提 |
-| `.venv` | 不明（要確認） | Python仮想環境。本プロジェクトはTypeScript/Electron構成のためPythonを直接使う場面がなく、由来不明。心当たりがなければ内容を確認のうえ要否を判断すること |
 | `node_modules` | 生成物（再生成可能） | `npm install`の依存パッケージ実体。`.gitignore`対象で、削除しても`npm install`で復元可能 |
 | `out` | 一時（生成物） | `electron-vite build`のビルド出力。`.gitignore`対象で、`npm run build`等のたびに再生成される。存在しない時期もある |
 | `release` | 一時（生成物） | `npm run pack`が作る配布用フォルダ・ZIP一式。`.gitignore`対象で、`npm run pack`のたびに再生成される。存在しない時期もある |
 | `scripts` | 恒久 | `npm run pack`・`npm run cleanup`が呼び出すNode.jsスクリプト（`pack.mjs`・`cleanup.mjs`） |
-| `specs` | 恒久 | Spec-Kitの機能仕様書（`spec.md`・`plan.md`・`tasks.md`等）。プロジェクトのドキュメント資産 |
 | `src` | 恒久 | アプリケーション本体のソースコード |
-| `tests` | 恒久 | テストコード |
-| `utsutaka` | 恒久（個人用） | うつたかさん向け成果物の保存先。蓄積型で削除運用の指定なし |
 
 ## 開発手順
 
 ### 前提条件
 
-- Windows環境であること（constitution原則I: 開発OSはWindows）
+- Windows環境であること（開発OSはWindows）
 - Node.js（npm同梱）がインストールされていること
 
 ### セットアップ
@@ -55,7 +48,7 @@ constitutionの配布方針（原則III）により、electron-builder等によ�
 ### 型チェック・テスト
 
 - `npm run typecheck`で型チェックを実行する。
-- `npm test`で`tests`フォルダ（フォルダ構成を参照）のユニットテストを実行する。
+- `npm test`（`vitest run`）でユニットテストを実行する。現時点ではテストファイルが未整備のため、実行すると`No test files found`で終了する。
 
 ### ビルドと動作確認
 
@@ -69,13 +62,7 @@ constitutionの配布方針（原則III）により、electron-builder等によ�
 
 ### コーディング規約・技術方針
 
-- 技術方針は`.specify`フォルダ（フォルダ構成を参照）内のconstitution（`.specify/memory/constitution.md`）で定義されている。
 - 主な原則: TypeScript固定、React/Vue等のUIフレームワーク不使用、electron-builder等によるEXE化禁止、外部通信禁止、設定永続化はelectron-store使用、等
-
-### 機能追加の進め方（SPECKIT）
-
-- 新機能は`specs`フォルダ（フォルダ構成を参照）に仕様書を作成してから実装する。
-- `.claude`フォルダ（フォルダ構成を参照）のspeckit-*スキルを使い、specify→clarify→plan→checklist→tasks→analyze→implement→convergeの順で進める。
 
 ## 利用方法
 
