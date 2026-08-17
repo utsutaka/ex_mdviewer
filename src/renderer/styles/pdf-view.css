@@ -1,0 +1,50 @@
+/**
+ * PDFタブのスタイル（011-html-pdf-viewer）。
+ * <iframe>をタブ領域いっぱいに表示し、ページ位置表示欄（.pdf-page-indicator）を
+ * 画面隅に固定表示する。既存のダーク/ライトテーマCSS変数（base.css）に連動させる。
+ */
+
+.pdf-pane {
+    display: none;
+    position: relative;
+    height: 100%;
+}
+
+.pdf-pane.is-active {
+    display: block;
+}
+
+.pdf-pane__loading {
+    padding: 40px 0;
+    color: var(--fg-color);
+    opacity: 0.6;
+    text-align: center;
+}
+
+.pdf-pane__empty-message {
+    padding: 40px 0;
+    color: var(--fg-color);
+    opacity: 0.6;
+    text-align: center;
+}
+
+.pdf-pane__frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+.pdf-page-indicator {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--fg-color);
+    border: 1px solid var(--border-color);
+    font-size: 12px;
+    opacity: 0.85;
+    pointer-events: none;
+}

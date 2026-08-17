@@ -1,0 +1,188 @@
+/**
+ * JSON/YAML/XMLツリービューアのスタイル（010-json-yaml-xml-viewer）。
+ * シンタックスハイライト・インデントガイド・折り畳み・要素数表示・$refジャンプの
+ * 見た目を、既存のダーク/ライトテーマCSS変数（base.css）に連動させる。
+ */
+
+.structured-tree {
+    display: none;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 32px 80px;
+    font-family: 'Consolas', 'Cascadia Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.content-width-full .structured-tree {
+    max-width: 1200px;
+}
+
+.structured-tree.is-active {
+    display: block;
+}
+
+.structured-tree__empty-message {
+    padding: 40px 0;
+    color: var(--fg-color);
+    opacity: 0.6;
+    text-align: center;
+}
+
+.structured-tree__fallback {
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--fg-color);
+}
+
+.sdv-doc-heading {
+    margin: 1.2em 0 0.4em;
+    font-weight: 600;
+    font-family: 'Segoe UI', 'Yu Gothic UI', sans-serif;
+    color: var(--fg-color);
+    opacity: 0.85;
+}
+
+.sdv-doc-heading:first-child {
+    margin-top: 0;
+}
+
+.sdv-node {
+    position: relative;
+}
+
+.sdv-children {
+    margin: 0;
+    padding-left: 18px;
+    border-left: 1px dotted var(--border-color);
+}
+
+.sdv-toggle {
+    display: inline-block;
+    width: 14px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--fg-color);
+    opacity: 0.6;
+}
+
+.sdv-node.collapsed > .sdv-children {
+    display: none;
+}
+
+.sdv-load-more {
+    display: block;
+    margin: 0.2em 0 0.2em 14px;
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 0.9em;
+    color: var(--accent-color);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.sdv-load-more:hover {
+    background: var(--panel-bg);
+}
+
+.sdv-node.collapsed > .sdv-row > .sdv-toggle::before {
+    content: '\25b8';
+}
+
+.sdv-node:not(.collapsed) > .sdv-row > .sdv-toggle::before {
+    content: '\25be';
+}
+
+.sdv-count {
+    color: var(--fg-color);
+    opacity: 0.5;
+    margin-left: 0.4em;
+    font-size: 0.9em;
+}
+
+/* 要素数表示は折り畳み時のみ（展開時は消える、spec.md User Story 1 Acceptance Scenario 3） */
+.sdv-node:not(.collapsed) > .sdv-row > .sdv-count {
+    display: none;
+}
+
+.sdv-key {
+    color: var(--accent-color);
+}
+
+.sdv-string {
+    color: #2e8b57;
+}
+
+:root.theme-dark .sdv-string {
+    color: #7fd99a;
+}
+
+.sdv-number {
+    color: #a35a00;
+}
+
+:root.theme-dark .sdv-number {
+    color: #e0a95c;
+}
+
+.sdv-boolean {
+    color: #a02b93;
+}
+
+:root.theme-dark .sdv-boolean {
+    color: #d383c7;
+}
+
+.sdv-null {
+    color: var(--fg-color);
+    opacity: 0.5;
+    font-style: italic;
+}
+
+/* 空のobject/array/element（値としてはnullだがnullリテラルとは意味が異なる） */
+.sdv-empty {
+    color: var(--fg-color);
+    opacity: 0.5;
+}
+
+.sdv-anchor-label {
+    margin-left: 0.4em;
+    font-size: 0.85em;
+    color: var(--fg-color);
+    opacity: 0.55;
+}
+
+.sdv-anchor-link {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.sdv-anchor-link:hover {
+    opacity: 0.8;
+}
+
+.sdv-ref-link {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.sdv-ref-link:hover {
+    opacity: 0.8;
+}
+
+.sdv-highlight {
+    animation: sdv-highlight-fade 1.6s ease-out;
+}
+
+@keyframes sdv-highlight-fade {
+    0% {
+        background-color: var(--accent-color);
+        opacity: 0.35;
+    }
+    100% {
+        background-color: transparent;
+        opacity: 1;
+    }
+}

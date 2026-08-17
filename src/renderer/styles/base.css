@@ -1,0 +1,96 @@
+:root,
+:root.theme-light {
+    --bg-color: #ffffff;
+    --fg-color: #1a1a1a;
+    --border-color: #e0e0e0;
+    --panel-bg: #f5f5f5;
+    --accent-color: #2d6cdf;
+    --toast-bg: #323232;
+    --toast-fg: #ffffff;
+    --toast-error-bg: #7a2222;
+    --modal-bg: #ffffff;
+    --modal-fg: #1a1a1a;
+}
+
+:root.theme-dark {
+    --bg-color: #1e1e1e;
+    --fg-color: #e0e0e0;
+    --border-color: #3a3a3a;
+    --panel-bg: #252526;
+    --accent-color: #4a8bfc;
+    --toast-bg: #2a2a2a;
+    --toast-fg: #f0f0f0;
+    --toast-error-bg: #7a2222;
+    --modal-bg: #2a2a2a;
+    --modal-fg: #f0f0f0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    background: var(--bg-color);
+    color: var(--fg-color);
+    font-family:
+        'Segoe UI',
+        'Yu Gothic UI',
+        sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.tab-bar {
+    flex: 0 0 auto;
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--panel-bg);
+    overflow: hidden;
+}
+
+.workspace {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+}
+
+.sidebar-toc {
+    flex: 0 0 220px;
+    border-right: 1px solid var(--border-color);
+    background: var(--panel-bg);
+    overflow-y: auto;
+}
+
+.sidebar-toc:empty {
+    display: none;
+}
+
+.toc-hidden .sidebar-toc {
+    display: none;
+}
+
+.content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    position: relative;
+}
+
+.search-bar {
+    position: absolute;
+    top: 8px;
+    right: 24px;
+    z-index: 500;
+}
