@@ -66,7 +66,13 @@ console.log('Electron本体（実行バイナリ）をダウンロードして�
 execFileSync(
   process.execPath,
   [resolve(stageDir, 'node_modules', 'electron', 'install.js')],
-  { cwd: resolve(stageDir, 'node_modules', 'electron'), stdio: 'inherit' }
+  {
+    cwd: resolve(stageDir, 'node_modules', 'electron'),
+    stdio: 'inherit',
+    // 一部環境ではプロキシ経由でないとelectronバイナリのダウンロードに失敗するため、
+    // package.jsonのpostinstallと同様にELECTRON_GET_USE_PROXYを有効化する
+    env: { ...process.env, ELECTRON_GET_USE_PROXY: 'true' }
+  }
 )
 
 console.log('起動用バッチファイルを作成しています...')
