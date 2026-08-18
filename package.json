@@ -14,7 +14,7 @@
     "cleanup": "node scripts/cleanup.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "postinstall": "node node_modules/electron/install.js"
+    "postinstall": "node -e \"process.env.ELECTRON_GET_USE_PROXY='true';require('./node_modules/electron/install.js')\""
   },
   "dependencies": {
     "chokidar": "^4.0.3",
