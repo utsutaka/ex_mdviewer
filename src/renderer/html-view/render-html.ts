@@ -52,10 +52,21 @@ export function extractHeadingsFromDom(containerEl: HTMLElement): Heading[] {
 }
 
 /**
+ * WHOLE_DOCUMENT: trueによるサニタイズ後、containerElの直接の子要素として紛れ込む
+ * <title>要素のみを除去する（014-html-style-support FR-003）。
+ * `:scope > title`はSVG内の<title>（アクセシビリティ用の代替テキスト）には一致しないため、
+ * FR-004により維持すべきSVG内titleを誤って除去することはない（research.md Decision 2）。
+ */
+function removeStrayTitleElements(containerEl: HTMLElement): void {
+  containerEl.querySelectorAll(':scope > title').forEach((el) => el.remove())
+}
+
+/**
  * HTMLファイルをサニタイズしタブへ表示する（011-html-pdf-viewer FR-001, FR-003, FR-004, FR-016）。
  * 既存のMarkdownパイプライン（decodeFileBufferでのテキスト読込）をそのまま延長し、
  * DOMPurify.sanitizeで無害化した結果をinnerHTMLへ挿入するのみで、CSP変更は不要（research.md Decision 3）。
  * 相対パス画像・外部CSSは解決できないことがあるが、エラーにはせずそのまま表示する（FR-003、意図的に何もしない）。
+ * WHOLE_DOCUMENT: trueにより<style>ブロックを保持する（014-html-style-support FR-001、research.md Decision 1）。
  * `isActive`がtrueの場合のみTOCを描画する（activeTabIdの判定はmain.ts側の責務）。
  */
 export function renderHtmlDocumentInto(tab: TabRuntime, payload: FileOpenedPayload, isActive: boolean): void {
@@ -69,7 +80,8 @@ export function renderHtmlDocumentInto(tab: TabRuntime, payload: FileOpenedPaylo
     return
   }
 
-  tab.containerEl.innerHTML = DOMPurify.sanitize(payload.rawContent)
+  tab.containerEl.innerHTML = DOMPurify.sanitize(payload.rawContent, { WHOLE_DOCUMENT: true })
+  removeStrayTitleElements(tab.containerEl)
   tab.headings = extractHeadingsFromDom(tab.containerEl)
   if (isActive) {
     void renderToc(tab.headings, tab.containerEl)
