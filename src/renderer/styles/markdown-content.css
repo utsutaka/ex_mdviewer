@@ -14,6 +14,15 @@
     display: block;
 }
 
+/*
+ * HTML内のCSSが position: fixed/absolute/sticky でタブバー等アプリ全体のUIを
+ * 覆い隠すことを防ぐため、document-pane--html自身をそれら要素の新しい包含ブロックとして
+ * 確立する（016-fix-html-ui-hijack FR-001, FR-002, research.md Decision 1）。
+ */
+.document-pane--html {
+    contain: paint;
+}
+
 .document-pane__loading {
     padding: 40px 0;
     color: var(--fg-color);
