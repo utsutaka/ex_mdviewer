@@ -35,6 +35,7 @@ import { toStructuredNodeFromXml } from './structured-data/xml-adapter'
 import { renderStructuredTree } from './structured-data/tree-viewer'
 import { renderHtmlDocumentInto } from './html-view/render-html'
 import { renderPdfDocumentInto, updatePdfPageIndicator } from './pdf-view/render-pdf'
+import { resolveContainerClassName } from './tab-container'
 
 export interface TabRuntime {
   tabId: string
@@ -150,21 +151,6 @@ function initInBodyLinkJump(containerEl: HTMLDivElement): void {
     event.preventDefault()
     scrollToHeading(anchorId, containerEl)
   })
-}
-
-/**
- * fileKindごとのタブコンテナ要素のクラス名を決定する（011-html-pdf-viewer）。
- * markdown/htmlは通常のページ表示（document-pane）、pdfは専用のiframeホスト（pdf-pane）、
- * json/yaml/xmlは既存のツリービューア（structured-tree）を使う。
- */
-function resolveContainerClassName(fileKind: FileKind): string {
-  if (fileKind === 'markdown' || fileKind === 'html') {
-    return 'document-pane'
-  }
-  if (fileKind === 'pdf') {
-    return 'pdf-pane'
-  }
-  return 'structured-tree'
 }
 
 function resolveLoadingClassName(fileKind: FileKind): string {

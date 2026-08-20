@@ -51,13 +51,11 @@
     padding: 12px 16px;
     overflow-x: auto;
     border-radius: 6px;
-    background: var(--panel-bg);
 }
 
 .document-pane code {
     padding: 0.15em 0.35em;
     border-radius: 4px;
-    background: var(--panel-bg);
     font-family:
         'Cascadia Code',
         Consolas,
@@ -67,7 +65,45 @@
 
 .document-pane pre code {
     padding: 0;
+}
+
+/*
+ * pre/codeのbackgroundのみ、Markdown表示（document-pane--htmlクラスなし）に限定する。
+ * HTML表示側は@layer html-view-fallback（下記）でテーマ連動フォールバックを提供し、
+ * HTMLファイル自身のstyle指定があれば常にそちらを優先させる（015-fix-html-codeblock-bg FR-001, FR-004）。
+ */
+.document-pane:not(.document-pane--html) pre {
+    background: var(--panel-bg);
+}
+
+.document-pane:not(.document-pane--html) code {
+    background: var(--panel-bg);
+}
+
+.document-pane:not(.document-pane--html) pre code {
     background: none;
+}
+
+/*
+ * HTML表示専用のテーマ連動フォールバック配色（015-fix-html-codeblock-bg FR-001, FR-002, FR-005, FR-007）。
+ * @layerで宣言されたスタイルは、HTMLファイル由来の@layerを伴わない<style>より必ず優先度が低くなるため、
+ * HTML側がpre/codeの配色を指定していれば常にそちらが勝ち、未指定時のみこのフォールバックが適用される。
+ * pre内codeも同様の優先順位により、code自身に指定があればそれが勝ち、なければ透明（pre側の背景を見せる）になる。
+ */
+@layer html-view-fallback {
+    .document-pane--html pre {
+        background: var(--panel-bg);
+        color: var(--fg-color);
+    }
+
+    .document-pane--html code {
+        background: var(--panel-bg);
+        color: var(--fg-color);
+    }
+
+    .document-pane--html pre code {
+        background: none;
+    }
 }
 
 .document-pane table {
