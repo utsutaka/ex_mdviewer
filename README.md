@@ -9,7 +9,7 @@
 | `npm run start` | `electron-vite preview` | 再ビルドしてからアプリを起動し、動作確認する（事前に`npm run build`を実行しておく必要はない） |
 | `npm run pack` | `electron-vite build && node scripts/pack.mjs` | 再ビルドし、Electron本体を含む配布用ZIP（`release/mdviewer.zip`）を作成する。別PCにNode.jsが入っていなくても、解凍後`mdviewer.bat`をダブルクリックするだけで起動できる |
 | `npm run cleanup` | `node scripts/cleanup.mjs` | `out/`・`release/`・`dist/`を削除する |
-| `npm test` | `vitest run` | ユニットテストを実行する（現時点ではテスト未整備） |
+| `npm test` | `vitest run` | ユニットテストを実行する |
 | `npm run typecheck` | `tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json` | 型チェックを実行する |
 
 `build`・`start`・`pack`はいずれも実行のたびに`out/`を自動的にクリーンアップしてから再生成する（Vite標準の`emptyOutDir`挙動）。手動でのクリーンアップが必要な場合は`npm run cleanup`を使う。
@@ -48,7 +48,7 @@
 ### 型チェック・テスト
 
 - `npm run typecheck`で型チェックを実行する。
-- `npm test`（`vitest run`）でユニットテストを実行する。現時点ではテストファイルが未整備のため、実行すると`No test files found`で終了する。
+- `npm test`（`vitest run`）でユニットテストを実行する。テスト対象は`tests/unit`配下（ファイル関連付け、エンコーディング判定、Markdown/HTMLレンダリング、構造化データ、目次生成、タブコンテナ、設定永続化等）。
 
 ### ビルドと動作確認
 
