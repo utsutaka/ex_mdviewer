@@ -74,13 +74,19 @@ function getContentRoot(): HTMLElement {
 }
 
 /**
- * コンテンツペイン・タブバーUI・TOCサイドバーを指定タブへ切り替える。
+ * コンテンツペイン・タブバーUI・アクティブタブ状態を指定タブへ切り替える（TOC再描画は含まない）。
  * PDFタブについては、ページ位置ポーリング（FR-018）の開始・停止をmainプロセスへ通知する。
  * タブクローズによる切替の場合は`closeTab()`で対象タブが既に`tabs`から削除されているため
  * ここでの非アクティブ通知は送られないが、main側の`handleCloseTab()`が独立して
  * ポーリング停止を行うため通知漏れは生じない（contracts/ipc-contract-delta.md）。
+ *
+ * TOC再描画（`renderToc`）をこの関数から分離しているのは、`toggleDisplayMode`が非アクティブな
+ * タブをアクティブ化する際に本関数を再利用しつつ、TOC再描画は表示モード切替後の最終状態で
+ * 1回だけ行うようにするため（024-fix-raw-toggle-tab-activate research.md Decision 1）。
+ * `renderToc`は`sidebar.innerHTML`を全消去して再構築する非同期処理であり、短時間に2回連続で
+ * 呼ぶと表示が競合して壊れうる。
  */
-function setActiveTab(tabId: string): void {
+function activateTabUi(tabId: string): void {
   const previousActiveTabId = activeTabId
   activeTabId = tabId
   for (const [id, tab] of tabs) {
@@ -96,12 +102,19 @@ function setActiveTab(tabId: string): void {
   }
 
   const tab = tabs.get(tabId)
+  if (tab?.fileKind === 'pdf') {
+    window.api.notifyPdfTabActiveChanged({ tabId, active: true })
+  }
+}
+
+/** コンテンツペイン・タブバーUI・TOCサイドバーを指定タブへ切り替える */
+function setActiveTab(tabId: string): void {
+  activateTabUi(tabId)
+
+  const tab = tabs.get(tabId)
   if (tab) {
     // raw表示中はTOC項目のクリックによるジャンプを無効化する（019-raw-source-toggle FR-012）
     void renderToc(tab.headings, tab.containerEl, tab.displayMode !== 'raw')
-    if (tab.fileKind === 'pdf') {
-      window.api.notifyPdfTabActiveChanged({ tabId, active: true })
-    }
   }
 }
 
@@ -400,6 +413,14 @@ function toggleDisplayMode(tabId: string): void {
   const tab = tabs.get(tabId)
   if (!tab || !isRawToggleSupported(tab.fileKind)) {
     return
+  }
+
+  // 対象タブが非アクティブな場合、表示モードを切り替える前に先にアクティブ化する
+  // （024-fix-raw-toggle-tab-activate FR-001）。displayMode切替より前にactivateTabUiを
+  // 呼ぶことで、以降の`tab.tabId === activeTabId`ガードが正しく真になり、TOC再描画が
+  // 切替後の状態で1回のみ行われる（research.md Decision 1）
+  if (activeTabId !== tabId) {
+    activateTabUi(tabId)
   }
 
   tab.displayMode = tab.displayMode === 'raw' ? 'rendered' : 'raw'
