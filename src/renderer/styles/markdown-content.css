@@ -158,3 +158,28 @@
     max-width: 100%;
     height: auto;
 }
+
+/*
+ * raw表示（019-raw-source-toggle FR-002, FR-003, FR-017）。専用の背景色・パディング・
+ * 角丸を持たず、既存コンテンツ余白（.document-paneのpadding）内に等幅フォントの
+ * 素のテキストのみを表示する。既存のMarkdownコードブロック配色ルール
+ * （.document-pane:not(.document-pane--html) pre、本ファイル前方）と同じ詳細度の
+ * セレクタをファイル内でそれより後方に配置することで、意図せぬ背景色付与を確実に打ち消す。
+ * .document-pane直下に配置するため、.content-width-full .document-paneの
+ * max-width指定（013-content-width-toggle）は追加のCSSなしでそのまま継承される。
+ */
+.document-pane pre.raw-source-view {
+    background: none;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+    overflow-x: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family:
+        'Cascadia Code',
+        Consolas,
+        monospace;
+    font-size: 0.9em;
+    line-height: 1.7;
+}

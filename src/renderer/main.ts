@@ -19,7 +19,8 @@ import {
   initTabBar,
   markTabLoaded,
   removeTab,
-  setActiveTabUi
+  setActiveTabUi,
+  setTabDisplayModeUi
 } from './components/tab-bar'
 import type {
   FileKind,
@@ -36,6 +37,10 @@ import { renderStructuredTree } from './structured-data/tree-viewer'
 import { renderHtmlDocumentInto } from './html-view/render-html'
 import { renderPdfDocumentInto, updatePdfPageIndicator } from './pdf-view/render-pdf'
 import { resolveContainerClassName } from './tab-container'
+import { isRawToggleSupported, renderRawSourceInto } from './raw-source/render-raw'
+
+/** Markdown/HTMLタブの表示モード（レンダリング表示⇔生データ表示、019-raw-source-toggle FR-001〜FR-004） */
+export type DisplayMode = 'rendered' | 'raw'
 
 export interface TabRuntime {
   tabId: string
@@ -44,6 +49,10 @@ export interface TabRuntime {
   containerEl: HTMLDivElement
   headings: Heading[]
   fileKind: FileKind
+  /** 表示モード（FR-001〜FR-008）。markdown/html以外のfileKindでは常に'rendered'のまま未使用 */
+  displayMode: DisplayMode
+  /** raw表示に用いる元テキスト（FR-002, FR-007）。file-opened/file-changed受信時にpayload.rawContentを複製する */
+  rawSourceText: string
 }
 
 const tabs = new Map<string, TabRuntime>()
@@ -81,7 +90,8 @@ function setActiveTab(tabId: string): void {
 
   const tab = tabs.get(tabId)
   if (tab) {
-    void renderToc(tab.headings, tab.containerEl)
+    // raw表示中はTOC項目のクリックによるジャンプを無効化する（019-raw-source-toggle FR-012）
+    void renderToc(tab.headings, tab.containerEl, tab.displayMode !== 'raw')
     if (tab.fileKind === 'pdf') {
       window.api.notifyPdfTabActiveChanged({ tabId, active: true })
     }
@@ -115,6 +125,9 @@ function initTabBarUi(): void {
     },
     onClose: (tabId) => {
       void closeTab(tabId)
+    },
+    onToggleDisplayMode: (tabId) => {
+      toggleDisplayMode(tabId)
     }
   })
 }
@@ -186,9 +199,12 @@ function initTabCreatedListener(): void {
       title: payload.title,
       containerEl,
       headings: [],
-      fileKind
+      fileKind,
+      // 新規タブの初期表示モードは常にレンダリング表示（019-raw-source-toggle FR-008）
+      displayMode: 'rendered',
+      rawSourceText: ''
     })
-    addTab(payload.tabId, payload.filePath, payload.title)
+    addTab(payload.tabId, payload.filePath, payload.title, fileKind)
     setActiveTab(payload.tabId)
   })
 }
@@ -306,6 +322,11 @@ async function renderStructuredDocumentInto(tab: TabRuntime, payload: FileOpened
  * ブロックしないことを保証する（FR-034）。fileKindに応じてMarkdownパイプライン
  * （見出し抽出・TOC描画・本文内アンカージャンプ）またはJSON/YAML/XMLツリー表示へ分岐する
  * （010-json-yaml-xml-viewer research.md Decision 9, spec.md FR-011）。
+ * markdown/htmlタブについては、raw表示への切替に備えて元テキストをtab.rawSourceTextへ
+ * 複製する（019-raw-source-toggle FR-002, FR-007）。表示モードがraw中の場合は
+ * レンダリングパイプラインを呼ばずraw表示のみを更新する。この複製・分岐はfile-opened/
+ * file-changedのいずれでも同一のこの関数を通るため、非アクティブタブのライブリロードでも
+ * 即座に反映される（FR-009）。
  */
 function applyDocumentPayload(payload: FileOpenedPayload): void {
   const tab = tabs.get(payload.tabId)
@@ -315,7 +336,17 @@ function applyDocumentPayload(payload: FileOpenedPayload): void {
   tab.fileKind = payload.fileKind
   markTabLoaded(payload.tabId)
 
-  if (tab.fileKind === 'markdown') {
+  const rawTogglable = isRawToggleSupported(tab.fileKind)
+  if (rawTogglable) {
+    tab.rawSourceText = payload.rawContent
+  }
+
+  if (rawTogglable && tab.displayMode === 'raw') {
+    renderRawSourceInto(tab.containerEl, tab.rawSourceText)
+    if (tab.tabId === activeTabId) {
+      void renderToc(tab.headings, tab.containerEl, false)
+    }
+  } else if (tab.fileKind === 'markdown') {
     void renderDocumentInto(tab, payload.rawContent)
   } else if (tab.fileKind === 'html') {
     renderHtmlDocumentInto(tab, payload, tab.tabId === activeTabId)
@@ -332,6 +363,50 @@ function applyDocumentPayload(payload: FileOpenedPayload): void {
       'エンコーディングを認識できませんでした。文字化けする場合があります。',
       'error'
     )
+  }
+}
+
+/**
+ * raw表示切替ボタンのクリック時、対象タブの表示モードを反転させる（019-raw-source-toggle
+ * FR-001, FR-006, FR-007）。対象タブのみを操作し、他タブの表示・状態には一切触れない。
+ * HTML表示への復帰は、既存の`renderHtmlDocumentInto`が要求する`FileOpenedPayload`のうち
+ * 実際に参照される`rawContent`・`isEmptyFile`のみを`tab.rawSourceText`から組み立てて渡す
+ * （他フィールドは既存実装で未参照のためダミー値でよい）。
+ */
+function toggleDisplayMode(tabId: string): void {
+  const tab = tabs.get(tabId)
+  if (!tab || !isRawToggleSupported(tab.fileKind)) {
+    return
+  }
+
+  tab.displayMode = tab.displayMode === 'raw' ? 'rendered' : 'raw'
+  setTabDisplayModeUi(tabId, tab.displayMode)
+
+  if (tab.displayMode === 'raw') {
+    renderRawSourceInto(tab.containerEl, tab.rawSourceText)
+    if (tab.tabId === activeTabId) {
+      void renderToc(tab.headings, tab.containerEl, false)
+    }
+    return
+  }
+
+  if (tab.fileKind === 'markdown') {
+    void renderDocumentInto(tab, tab.rawSourceText)
+  } else if (tab.fileKind === 'html') {
+    const payload: FileOpenedPayload = {
+      tabId: tab.tabId,
+      filePath: tab.filePath,
+      rawContent: tab.rawSourceText,
+      encodingStatus: 'utf-8',
+      headings: [],
+      loadStatus: 'loaded',
+      fileKind: 'html',
+      yamlDocuments: null,
+      structuredParseError: false,
+      isEmptyFile: tab.rawSourceText === '',
+      isInvalidPdf: false
+    }
+    renderHtmlDocumentInto(tab, payload, tab.tabId === activeTabId)
   }
 }
 

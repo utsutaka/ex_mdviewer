@@ -25,7 +25,8 @@ export function scrollToHeading(anchorId: string, contentContainerEl: HTMLElemen
 async function buildListAsync(
   headings: Heading[],
   contentContainerEl: HTMLElement,
-  counter: { count: number }
+  counter: { count: number },
+  interactive: boolean
 ): Promise<HTMLUListElement> {
   const ul = document.createElement('ul')
   ul.setAttribute('role', 'group')
@@ -37,14 +38,21 @@ async function buildListAsync(
     link.textContent = heading.text
     link.setAttribute('role', 'treeitem')
     link.tabIndex = 0
+    if (!interactive) {
+      // raw表示中はTOCの表示自体を維持しつつ、クリック（キーボードのEnter経由も含む）を無効化する（019-raw-source-toggle FR-012）
+      link.classList.add('toc-link--disabled')
+    }
     link.addEventListener('click', (event) => {
       event.preventDefault()
+      if (!interactive) {
+        return
+      }
       scrollToHeading(heading.anchorId, contentContainerEl)
     })
     li.appendChild(link)
 
     if (heading.children.length > 0) {
-      li.appendChild(await buildListAsync(heading.children, contentContainerEl, counter))
+      li.appendChild(await buildListAsync(heading.children, contentContainerEl, counter, interactive))
     }
     ul.appendChild(li)
 
@@ -76,15 +84,23 @@ function initKeyboardNavigation(sidebar: HTMLElement): void {
   })
 }
 
-/** アクティブタブのTOCサイドバーを再構築する（FR-003, FR-004） */
-export async function renderToc(headings: Heading[], contentContainerEl: HTMLElement): Promise<void> {
+/**
+ * アクティブタブのTOCサイドバーを再構築する（FR-003, FR-004）。
+ * `interactive: false`の場合、TOCの表示自体は維持しつつ項目クリックによる
+ * ジャンプ操作のみを無効化する（019-raw-source-toggle FR-012、raw表示中に使用）。
+ */
+export async function renderToc(
+  headings: Heading[],
+  contentContainerEl: HTMLElement,
+  interactive = true
+): Promise<void> {
   const sidebar = getSidebarEl()
   sidebar.innerHTML = ''
   if (headings.length === 0) {
     return
   }
   sidebar.setAttribute('role', 'tree')
-  const listEl = await buildListAsync(headings, contentContainerEl, { count: 0 })
+  const listEl = await buildListAsync(headings, contentContainerEl, { count: 0 }, interactive)
   sidebar.appendChild(listEl)
   initKeyboardNavigation(sidebar)
 }
