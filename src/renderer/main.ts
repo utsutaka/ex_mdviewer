@@ -228,6 +228,22 @@ function initFocusTabListener(): void {
  */
 async function renderDocumentInto(tab: TabRuntime, rawContent: string): Promise<void> {
   tab.containerEl.innerHTML = ''
+
+  if (rawContent === '') {
+    const emptyEl = document.createElement('div')
+    emptyEl.className = 'document-pane__empty-message'
+    emptyEl.textContent = '空のファイルです'
+    tab.containerEl.appendChild(emptyEl)
+
+    // 見出しありファイルからのライブリロードで空になった場合、tab.headingsが直前の値の
+    // まま残っているとサイドバーTOCが古い見出し一覧を表示し続けてしまうため、クリアする（FR-003）
+    tab.headings = []
+    if (tab.tabId === activeTabId) {
+      void renderToc(tab.headings, tab.containerEl)
+    }
+    return
+  }
+
   try {
     const { tokens, env } = parseDocument(rawContent)
 
