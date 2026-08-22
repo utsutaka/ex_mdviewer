@@ -27,7 +27,7 @@ import { refreshAppMenu } from '../menu'
 import { isPdfSignatureValid } from '../pdf-signature'
 import { startPdfPageTracking, stopPdfPageTracking } from '../pdf-page-tracker'
 import { getAppSettings, setAppSettings } from '../store'
-import { getMainWindow, restoreAndFocusWindow } from '../window'
+import { confirmCloseLastTab, getMainWindow, markQuitHandled, restoreAndFocusWindow } from '../window'
 
 interface TabRuntimeState {
   tabId: string
@@ -138,23 +138,59 @@ export async function handleOpenFile(filePath: string): Promise<void> {
   watchFile(filePath, tabId)
 }
 
+/** タブ1件分のランタイム状態を破棄する（ファイル監視・PDFページ追跡の停止、openTabsからの削除） */
+function removeTabRuntimeState(tabId: string, tab: TabRuntimeState): void {
+  unwatchFile(tab.filePath, tabId)
+  openTabs.delete(tabId)
+  if (resolveFileKind(tab.filePath) === 'pdf') {
+    stopPdfPageTracking(tabId)
+  }
+}
+
 /**
- * タブを閉じる（FR-026, FR-027）。最後の1タブの場合はウィンドウ全体を閉じる。
+ * openTabs内の全タブについてクリーンアップ処理を行い、openTabsを空にする
+ * （022-quit-dialog-close-tab FR-007）。OS標準のウィンドウ閉じる操作で「はい」が
+ * 選ばれた際、attachQuitConfirmation（src/main/window.ts）へ注入する。
  */
-function handleCloseTab(tabId: string): CloseTabResponse {
-  const win = getMainWindow()
-  const tab = openTabs.get(tabId)
-  if (tab) {
+export function closeAllTabs(): void {
+  for (const [tabId, tab] of openTabs) {
     unwatchFile(tab.filePath, tabId)
-    openTabs.delete(tabId)
     if (resolveFileKind(tab.filePath) === 'pdf') {
       stopPdfPageTracking(tabId)
     }
   }
+  openTabs.clear()
+}
 
-  if (openTabs.size === 0) {
-    win?.close()
-    return { windowClosed: true }
+/**
+ * タブを閉じる（001-core-viewer FR-026, FR-027）。開いているタブが1つだけの場合、実際にタブを
+ * 削除する前にタブクローズ確認ダイアログを表示する（022-quit-dialog-close-tab FR-001〜FR-004）。
+ * 「はい」の場合はタブ削除後にmarkQuitHandled()を呼びウィンドウを閉じる。「いいえ」の場合は
+ * タブ削除のみ行いwin.close()は呼ばない（真のキャンセルは廃止、いずれの選択でもタブは削除される）。
+ */
+async function handleCloseTab(tabId: string): Promise<CloseTabResponse> {
+  const win = getMainWindow()
+  const tab = openTabs.get(tabId)
+  const isLastTab = openTabs.size <= 1
+
+  if (isLastTab && win) {
+    const confirmed = await confirmCloseLastTab(win)
+
+    if (tab) {
+      removeTabRuntimeState(tabId, tab)
+    }
+
+    if (confirmed) {
+      markQuitHandled()
+      win.close()
+      return { windowClosed: true }
+    }
+
+    return { windowClosed: false }
+  }
+
+  if (tab) {
+    removeTabRuntimeState(tabId, tab)
   }
 
   return { windowClosed: false }

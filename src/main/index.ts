@@ -2,13 +2,14 @@ import { app, dialog, type BrowserWindow } from 'electron'
 import './app-identity'
 import {
   applyContentSecurityPolicy,
+  attachQuitConfirmation,
   closeSplashWindow,
   createMainWindow,
   createSplashWindow,
   getMainWindow
 } from './window'
 import { getWindowState, wasConfigReset } from './store'
-import { handleOpenFile, registerIpcHandlers, setupFoundInPageRelay } from './ipc/handlers'
+import { closeAllTabs, handleOpenFile, registerIpcHandlers, setupFoundInPageRelay } from './ipc/handlers'
 import { cleanupLegacyFileAssociation } from './file-association'
 import { registerAppMenu } from './menu'
 import { resolveFileKind } from '@shared/file-kind'
@@ -71,6 +72,7 @@ if (!gotLock) {
         return
       }
       setupFoundInPageRelay(win)
+      attachQuitConfirmation(win, closeAllTabs)
 
       win.webContents.once('did-finish-load', () => {
         if (wasConfigReset()) {

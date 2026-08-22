@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, session } from 'electron'
+import { BrowserWindow, dialog, screen, session } from 'electron'
 import { join } from 'node:path'
 import type { WindowState } from '@shared/types'
 import { attachExternalLinkGuard } from './external-link-guard'
@@ -240,4 +240,77 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
   })
 
   return win
+}
+
+/**
+ * タブの×ボタン経由（開いているタブが1つだけ）の確認ダイアログを表示し、
+ * 利用者が「はい」（アプリも終了する）を選択したかを返す（022-quit-dialog-close-tab FR-001）。
+ * 既存のexternal-link-guard.tsのopenExternalWithConfirmationと同型のdialog.showMessageBoxパターンを再利用する。
+ * defaultId・cancelIdをともに「いいえ」に設定し、既定選択・Escキー・ダイアログの×ボタンいずれも
+ * 同じ結果になる対称構成とする（FR-004、research.md Decision 1）。
+ */
+export async function confirmCloseLastTab(win: BrowserWindow): Promise<boolean> {
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: 'mdviewer',
+    buttons: ['はい', 'いいえ'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'アプリも終了しますか？'
+  })
+  return result.response === 0
+}
+
+/**
+ * タブの×ボタン経由で「はい」が選ばれ、これからwin.close()を呼ぶことを記録する
+ * （022-quit-dialog-close-tab research.md Decision 2）。attachQuitConfirmationのcloseイベント側で
+ * 二重確認を回避するために参照される。単一ウィンドウ構成（Constitution原則I）のため、
+ * モジュールレベルの状態として保持する（既存のmainWindow・splashWindowと同様のパターン）。
+ */
+let quitAlreadyHandled = false
+
+export function markQuitHandled(): void {
+  quitAlreadyHandled = true
+}
+
+/**
+ * OS標準のウィンドウ閉じる操作（タイトルバー×・Alt+F4等）経由の確認ダイアログを表示し、
+ * 利用者が「はい」を選択したかを返す（022-quit-dialog-close-tab FR-006）。タブについて一切言及しない。
+ * defaultId（Enterキー用、「はい」）とcancelId（Esc・ダイアログの×ボタン用、「いいえ」）を
+ * 意図的に異なる値に設定する非対称構成（FR-009、research.md Decision 1）。
+ */
+async function confirmQuitFromWindowClose(win: BrowserWindow): Promise<boolean> {
+  const result = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: 'mdviewer',
+    buttons: ['いいえ', 'はい'],
+    defaultId: 1,
+    cancelId: 0,
+    message: 'アプリを終了しますか？'
+  })
+  return result.response === 1
+}
+
+/**
+ * BrowserWindowのcloseイベントを唯一の終了ゲートとする（022-quit-dialog-close-tab FR-006）。
+ * markQuitHandled()済みの場合は素通りし、それ以外は開いているタブの数によらず常に
+ * confirmQuitFromWindowCloseを介する（research.md Decision 2）。「はい」が選ばれた場合、
+ * closeAllTabsで開いているタブを一括クリーンアップしてからwin.close()する。
+ * closeAllTabsは呼び出し元が注入する（window.tsはタブの概念を持たない、research.md Decision 4）。
+ */
+export function attachQuitConfirmation(win: BrowserWindow, closeAllTabs: () => void): void {
+  win.on('close', (event) => {
+    if (quitAlreadyHandled) {
+      return
+    }
+    event.preventDefault()
+    void (async () => {
+      const confirmed = await confirmQuitFromWindowClose(win)
+      if (confirmed) {
+        quitAlreadyHandled = true
+        closeAllTabs()
+        win.close()
+      }
+    })()
+  })
 }

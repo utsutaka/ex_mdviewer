@@ -88,7 +88,7 @@ function setActiveTab(tabId: string): void {
   }
 }
 
-/** タブのクローズ（FR-026, FR-027） */
+/** タブのクローズ（001-core-viewer FR-026, FR-027） */
 async function closeTab(tabId: string): Promise<void> {
   const response = await window.api.closeTab(tabId)
 
