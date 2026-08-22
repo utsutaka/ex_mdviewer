@@ -65,17 +65,39 @@ async function buildListAsync(
   return ul
 }
 
-/** 矢印キー・Enterによるキーボードのみでのジャンプ操作（FR-029） */
+/**
+ * 矢印キー・Enterによるキーボードのみでのジャンプ操作（FR-029）に加え、
+ * roving tabindexパターンによりTabキーでは目次内を移動させず、目次外への
+ * フォーカス離脱・進入のみをブラウザ標準のTab順に委ねる（023-toc-keyboard-nav FR-001〜FR-004）。
+ */
 function initKeyboardNavigation(sidebar: HTMLElement): void {
   const links = Array.from(sidebar.querySelectorAll<HTMLAnchorElement>('a'))
+  if (links.length === 0) {
+    return
+  }
+
+  // フォーカス対象となる項目のみtabIndex = 0とし、他は-1にする（roving tabindex）。
+  // これによりTabキーは目次内の他項目へは移動せず、ブラウザ標準のTab順で目次外へ抜ける。
+  const focusLink = (nextIndex: number): void => {
+    links.forEach((link) => {
+      link.tabIndex = -1
+    })
+    const target = links[nextIndex]
+    target.tabIndex = 0
+    target.focus()
+  }
+  links.forEach((link, index) => {
+    link.tabIndex = index === 0 ? 0 : -1
+  })
+
   links.forEach((link, index) => {
     link.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
-        links[Math.min(index + 1, links.length - 1)]?.focus()
+        focusLink(Math.min(index + 1, links.length - 1))
       } else if (event.key === 'ArrowUp') {
         event.preventDefault()
-        links[Math.max(index - 1, 0)]?.focus()
+        focusLink(Math.max(index - 1, 0))
       } else if (event.key === 'Enter') {
         event.preventDefault()
         link.click()
