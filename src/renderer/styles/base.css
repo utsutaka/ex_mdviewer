@@ -68,8 +68,7 @@ body {
 }
 
 .sidebar-toc {
-    flex: 0 0 220px;
-    border-right: 1px solid var(--border-color);
+    flex: 0 0 var(--toc-width, 220px);
     background: var(--panel-bg);
     overflow-y: auto;
 }
@@ -79,6 +78,26 @@ body {
 }
 
 .toc-hidden .sidebar-toc {
+    display: none;
+}
+
+.toc-resize-handle {
+    flex: 0 0 4px;
+    cursor: col-resize;
+    background: transparent;
+    border-right: 1px solid var(--border-color);
+}
+
+.toc-resize-handle:hover,
+.toc-resize-handle.is-dragging {
+    background: var(--accent-color);
+}
+
+.sidebar-toc:empty + .toc-resize-handle {
+    display: none;
+}
+
+.toc-hidden .toc-resize-handle {
     display: none;
 }
 

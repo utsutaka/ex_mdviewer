@@ -70,7 +70,12 @@ describe('005-native-menu-save-toggle: 設定保存有無', () => {
     existsSyncMock.mockReturnValue(false)
     const { getWindowState, getAppSettings } = await importStore()
     expect(getWindowState()).toEqual({ width: 1000, height: 800, x: -1, y: -1, isMaximized: false })
-    expect(getAppSettings()).toEqual({ theme: 'light', tocVisible: true, contentWidthMode: 'readable' })
+    expect(getAppSettings()).toEqual({
+      theme: 'light',
+      tocVisible: true,
+      tocWidth: 220,
+      contentWidthMode: 'readable'
+    })
   })
 
   it('enablePersistenceは、OFF→ON時に現在のセッション状態をdefaultsとしてStoreを生成しtrueを返す（FR-008）', async () => {

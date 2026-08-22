@@ -16,6 +16,7 @@ import type {
   TabCreatedPayload,
   ThemeChangedRequest,
   TocVisibilityChangedRequest,
+  TocWidthChangedRequest,
   UnsupportedFilePayload,
   YamlDocumentGroup
 } from '@shared/types'
@@ -249,6 +250,10 @@ export function registerIpcHandlers(): void {
   ipcMain.on('toc-visibility-changed', (_event, request: TocVisibilityChangedRequest) => {
     setAppSettings({ ...getAppSettings(), tocVisible: request.visible })
     refreshAppMenu()
+  })
+
+  ipcMain.on('toc-width-changed', (_event, request: TocWidthChangedRequest) => {
+    setAppSettings({ ...getAppSettings(), tocWidth: request.width })
   })
 
   ipcMain.on('content-width-mode-changed', (_event, request: ContentWidthModeChangedRequest) => {

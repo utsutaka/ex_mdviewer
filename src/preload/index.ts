@@ -15,6 +15,7 @@ import type {
   TabCreatedPayload,
   ThemeChangedRequest,
   TocVisibilityChangedRequest,
+  TocWidthChangedRequest,
   UnsupportedFilePayload
 } from '@shared/types'
 
@@ -36,6 +37,9 @@ const api = {
   },
   tocVisibilityChanged(visible: TocVisibilityChangedRequest['visible']): void {
     ipcRenderer.send('toc-visibility-changed', { visible })
+  },
+  tocWidthChanged(width: TocWidthChangedRequest['width']): void {
+    ipcRenderer.send('toc-width-changed', { width })
   },
   contentWidthModeChanged(mode: ContentWidthModeChangedRequest['mode']): void {
     ipcRenderer.send('content-width-mode-changed', { mode })

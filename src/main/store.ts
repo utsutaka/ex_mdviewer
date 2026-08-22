@@ -29,6 +29,7 @@ const defaultWindowState: WindowState = {
 const defaultAppSettings: AppSettings = {
   theme: 'light',
   tocVisible: true,
+  tocWidth: 220,
   contentWidthMode: 'readable'
 }
 

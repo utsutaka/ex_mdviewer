@@ -3,7 +3,14 @@ import { showToast } from './components/toast'
 import { showFatalErrorModal } from './components/modal'
 import { parseDocument, renderTokensChunked } from './markdown/render'
 import { extractHeadingsFromTokens } from './markdown/toc'
-import { getTocVisible, initTocVisible, renderToc, scrollToHeading, setTocVisible } from './components/sidebar-toc'
+import {
+  getTocVisible,
+  initTocVisible,
+  initTocWidth,
+  renderToc,
+  scrollToHeading,
+  setTocVisible
+} from './components/sidebar-toc'
 import { closeSearchBar, isSearchBarOpen, openSearchBar } from './components/search-bar'
 import { applyMermaidTheme, renderMermaidBlocks } from './markdown/mermaid'
 import { getTheme, initTheme, onThemeChange, setTheme } from './theme/theme-manager'
@@ -576,6 +583,7 @@ async function init(): Promise<void> {
   applyMermaidTheme(settings.theme === 'dark' ? 'dark' : 'default')
   onThemeChange((theme) => applyMermaidTheme(theme === 'dark' ? 'dark' : 'default'))
   initTocVisible(settings.tocVisible)
+  initTocWidth(settings.tocWidth)
   initContentWidthMode(settings.contentWidthMode)
 
   initSettingsResetListener()

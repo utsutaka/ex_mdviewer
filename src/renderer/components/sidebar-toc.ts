@@ -124,3 +124,86 @@ export function initTocVisible(initialVisible: boolean): void {
   tocVisible = initialVisible
   document.documentElement.classList.toggle('toc-hidden', !initialVisible)
 }
+
+const TOC_WIDTH_MIN = 150
+const TOC_WIDTH_MAX = 480
+const TOC_WIDTH_DEFAULT = 220
+
+function clampTocWidth(width: number): number {
+  return Math.min(TOC_WIDTH_MAX, Math.max(TOC_WIDTH_MIN, width))
+}
+
+function applyTocWidth(width: number): void {
+  document.documentElement.style.setProperty('--toc-width', `${width}px`)
+}
+
+let tocWidth = TOC_WIDTH_DEFAULT
+
+/** TOCサイドバーの現在の幅（px）を返す */
+export function getTocWidth(): number {
+  return tocWidth
+}
+
+/** TOCサイドバーの幅を150〜480pxへクランプして確定し、AppSettingsへ永続化する（021-toc-sidebar-resize FR-003, FR-005） */
+export function setTocWidth(width: number): void {
+  tocWidth = clampTocWidth(width)
+  applyTocWidth(tocWidth)
+  window.api.tocWidthChanged(tocWidth)
+}
+
+/** 起動時、永続化済みの幅を適用する（IPC送出は行わない） */
+export function initTocWidth(initialWidth: number): void {
+  tocWidth = clampTocWidth(initialWidth)
+  applyTocWidth(tocWidth)
+}
+
+/**
+ * リサイズハンドルへのドラッグ操作（Pointer Events）とダブルクリックによる既定幅リセットを配線する
+ * （FR-002, FR-007, FR-008、research.md Decision 1, 3, 6）。
+ */
+function initTocResizeHandle(): void {
+  const handle = document.getElementById('toc-resize-handle')
+  if (!handle) {
+    return
+  }
+
+  let dragStartX = 0
+  let dragStartWidth = TOC_WIDTH_DEFAULT
+
+  handle.addEventListener('pointerdown', (event) => {
+    // TOC非表示中はリサイズハンドルを操作不可にする（FR-007）
+    if (!getTocVisible()) {
+      return
+    }
+    handle.setPointerCapture(event.pointerId)
+    handle.classList.add('is-dragging')
+    dragStartX = event.clientX
+    dragStartWidth = tocWidth
+  })
+
+  handle.addEventListener('pointermove', (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) {
+      return
+    }
+    // ドラッグ中はCSS変数の更新のみでリアルタイムに追従させ、確定（永続化）はpointerupまで行わない
+    applyTocWidth(clampTocWidth(dragStartWidth + (event.clientX - dragStartX)))
+  })
+
+  handle.addEventListener('pointerup', (event) => {
+    if (!handle.hasPointerCapture(event.pointerId)) {
+      return
+    }
+    handle.releasePointerCapture(event.pointerId)
+    handle.classList.remove('is-dragging')
+    setTocWidth(dragStartWidth + (event.clientX - dragStartX))
+  })
+
+  handle.addEventListener('dblclick', () => {
+    if (!getTocVisible()) {
+      return
+    }
+    setTocWidth(TOC_WIDTH_DEFAULT)
+  })
+}
+
+initTocResizeHandle()

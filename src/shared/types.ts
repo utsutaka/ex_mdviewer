@@ -89,6 +89,8 @@ export type ContentWidthMode = 'readable' | 'full'
 export interface AppSettings {
   theme: Theme
   tocVisible: boolean
+  /** TOCサイドバーの幅（ピクセル単位の整数値、150〜480、アプリ全体で共通。021-toc-sidebar-resize FR-003, FR-005, FR-006） */
+  tocWidth: number
   /** 本文表示幅のモード（アプリ全体で共通、FR-001〜FR-003） */
   contentWidthMode: ContentWidthMode
   /** 「ファイルを開く」ダイアログの初期表示フォルダ。未記憶の場合はundefined（012-remember-last-directory） */
@@ -160,6 +162,11 @@ export interface ThemeChangedRequest {
 
 export interface TocVisibilityChangedRequest {
   visible: boolean
+}
+
+/** TOCサイドバーの幅の変更をmainプロセスへ通知するペイロード（021-toc-sidebar-resize） */
+export interface TocWidthChangedRequest {
+  width: number
 }
 
 /** 本文表示幅モードの変更をmainプロセスへ通知するペイロード（013-content-width-toggle） */
