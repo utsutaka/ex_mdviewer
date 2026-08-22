@@ -14,8 +14,6 @@
 
 `build`・`start`・`pack`はいずれも実行のたびに`out/`を自動的にクリーンアップしてから再生成する（Vite標準の`emptyOutDir`挙動）。手動でのクリーンアップが必要な場合は`npm run cleanup`を使う。
 
-配布方針として、electron-builder等によるEXE化・インストーラー作成は行わない。
-
 ## フォルダ構成
 
 プロジェクト直下にあるフォルダの位置付けを一覧にする。
@@ -28,6 +26,7 @@
 | `release` | 一時（生成物） | `npm run pack`が作る配布用フォルダ・ZIP一式。`.gitignore`対象で、`npm run pack`のたびに再生成される。存在しない時期もある |
 | `scripts` | 恒久 | `npm run pack`・`npm run cleanup`が呼び出すNode.jsスクリプト（`pack.mjs`・`cleanup.mjs`） |
 | `src` | 恒久 | アプリケーション本体のソースコード |
+| `tests` | 恒久 | テストコード |
 
 ## 開発手順
 
