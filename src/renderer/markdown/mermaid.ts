@@ -117,6 +117,36 @@ export function renderMermaidBlocks(containerEl: HTMLElement, tokens: Tokens): v
   })
 }
 
+/**
+ * HTML表示中の文書内でpre.mermaid/div.mermaid要素を検出する純粋関数（017-html-mermaid-support FR-001）。
+ * CSSクラスセレクタによる検出のため、他クラスの併記（例: class="mermaid theme-dark"）も対象に含み、
+ * 大文字小文字はブラウザ標準のクラスセレクタ挙動に従い区別する。
+ */
+export function detectMermaidElements(
+  containerEl: HTMLElement
+): { element: HTMLElement; sourceText: string }[] {
+  return Array.from(containerEl.querySelectorAll<HTMLElement>('pre.mermaid, div.mermaid')).map(
+    (element) => ({ element, sourceText: element.textContent ?? '' })
+  )
+}
+
+/**
+ * detectMermaidElementsの検出結果を既存の描画キューへ投入する（017-html-mermaid-support FR-002〜FR-005・FR-008）。
+ * renderOneBlockはpre.replaceWith(wrapper)という汎用的なDOM操作のみを行うため、
+ * 検出元がMarkdownのトークンかHTMLのDOM要素かを問わず、Markdown表示向けの既存実装をそのまま再利用できる。
+ */
+export function renderMermaidBlocksInDom(containerEl: HTMLElement): void {
+  for (const { element, sourceText } of detectMermaidElements(containerEl)) {
+    const block: MermaidBlock = {
+      id: `mermaid-${mermaidIdCounter++}`,
+      sourceText,
+      renderStatus: 'pending',
+      errorMessage: null
+    }
+    void enqueue(() => renderOneBlock(element, block))
+  }
+}
+
 /** テーマ変更に連動してmermaid.initializeを再設定し、表示中の全図を再描画する（FR-024） */
 export function applyMermaidTheme(theme: MermaidTheme): void {
   if (theme === currentMermaidTheme) {

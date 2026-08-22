@@ -2,6 +2,7 @@ import DOMPurify from 'dompurify'
 import GithubSlugger from 'github-slugger'
 import type { FileOpenedPayload, Heading } from '@shared/types'
 import { renderToc } from '../components/sidebar-toc'
+import { renderMermaidBlocksInDom } from '../markdown/mermaid'
 import type { TabRuntime } from '../main'
 
 /**
@@ -83,6 +84,8 @@ export function renderHtmlDocumentInto(tab: TabRuntime, payload: FileOpenedPaylo
   tab.containerEl.innerHTML = DOMPurify.sanitize(payload.rawContent, { WHOLE_DOCUMENT: true })
   removeStrayTitleElements(tab.containerEl)
   tab.headings = extractHeadingsFromDom(tab.containerEl)
+  // HTML内のpre.mermaid/div.mermaidブロックを図として描画する（017-html-mermaid-support FR-001〜FR-002）
+  renderMermaidBlocksInDom(tab.containerEl)
   if (isActive) {
     void renderToc(tab.headings, tab.containerEl)
   }
