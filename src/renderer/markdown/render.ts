@@ -1,6 +1,7 @@
 import hljs from 'highlight.js'
 import MarkdownIt from 'markdown-it'
 import taskLists from 'markdown-it-task-lists'
+import { renderCsvTable } from './csv-table'
 
 /**
  * GFM相当のMarkdownレンダリングを行うmarkdown-itインスタンス。
@@ -23,6 +24,22 @@ export const md = new MarkdownIt('default', {
     return ''
   }
 }).use(taskLists, { enabled: false, label: true })
+
+/**
+ * ```csvフェンスのみ表（<table>）として描画する（026-csv-table-render FR-001, FR-002）。
+ * 空のcsvブロック・他言語のフェンスは既存のデフォルトfenceレンダラーに委譲する。
+ */
+const defaultFenceRenderer = md.renderer.rules.fence!
+md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  if (token.info.trim() === 'csv') {
+    const tableHtml = renderCsvTable(token.content)
+    if (tableHtml !== '') {
+      return tableHtml
+    }
+  }
+  return defaultFenceRenderer(tokens, idx, options, env, self)
+}
 
 export function renderMarkdown(rawContent: string): string {
   return md.render(rawContent)
