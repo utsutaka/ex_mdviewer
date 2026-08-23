@@ -4,6 +4,7 @@ import { showFatalErrorModal } from './components/modal'
 import { parseDocument, renderTokensChunked } from './markdown/render'
 import { extractHeadingsFromTokens } from './markdown/toc'
 import {
+  clearToc,
   getTocVisible,
   initTocVisible,
   initTocWidth,
@@ -134,6 +135,11 @@ async function closeTab(tabId: string): Promise<void> {
     const nextId = firstTabId()
     if (nextId) {
       setActiveTab(nextId)
+    } else {
+      // タブが0件になった場合、setActiveTabが呼ばれずTOC再描画も発生しないため、
+      // 明示的にアクティブタブ状態をリセットしTOCサイドバーを空にする（025-fix-toc-close-last-tab FR-001, FR-002）
+      activeTabId = ''
+      clearToc()
     }
   }
 }

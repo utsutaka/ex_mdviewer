@@ -127,6 +127,16 @@ export async function renderToc(
   initKeyboardNavigation(sidebar)
 }
 
+/**
+ * タブが1件もない状態になった際、TOCサイドバーを空にする（025-fix-toc-close-last-tab FR-001）。
+ * `renderToc`と異なり見出しと紐づく文書コンテナを持たないため、専用の軽量関数として分離する
+ * （research.md Decision 1）。表示・非表示設定（`tocVisible`）には触れない（Decision 2）。
+ */
+export function clearToc(): void {
+  const sidebar = getSidebarEl()
+  sidebar.innerHTML = ''
+}
+
 let tocVisible = true
 
 /** TOCサイドバーの現在の表示状態を返す */
