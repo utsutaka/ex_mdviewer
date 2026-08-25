@@ -10,6 +10,7 @@ import {
 } from './store'
 import { getMainWindow } from './window'
 import { handleOpenFile } from './ipc/handlers'
+import { appVersion } from './app-version'
 
 /**
  * 「ファイル」メニューの項目（009-native-menu-file-edit FR-002〜FR-005）。
@@ -123,7 +124,34 @@ function buildSettingsMenuItem(): Electron.MenuItemConstructorOptions {
   }
 }
 
-/** ネイティブメニューのテンプレートを構築する（005-native-menu-save-toggle FR-002, 009-native-menu-file-edit FR-001, FR-006）。 */
+/**
+ * 「ヘルプ」メニューの項目（028-version-info-menu FR-001, FR-002）。
+ * 「バージョン情報」クリック時、ビルド時に確定した`appVersion`（gitのコミット履歴
+ * が利用可能ならHEADコミット日時、利用不可なら非公式マーカー付きのビルド実行時刻。
+ * FR-005, FR-007）をネイティブダイアログで表示する（research.md Decision 5）。
+ */
+function buildHelpMenuItems(): Electron.MenuItemConstructorOptions[] {
+  return [
+    {
+      label: 'バージョン情報',
+      click: () => {
+        const win = getMainWindow()
+        if (!win) {
+          return
+        }
+        void dialog.showMessageBox(win, {
+          type: 'info',
+          buttons: ['OK'],
+          title: 'mdviewer',
+          message: 'mdviewer',
+          detail: `バージョン: ${appVersion}`
+        })
+      }
+    }
+  ]
+}
+
+/** ネイティブメニューのテンプレートを構築する（005-native-menu-save-toggle FR-002, 009-native-menu-file-edit FR-001, FR-006, 028-version-info-menu FR-001）。 */
 function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
   return [
     {
@@ -133,6 +161,10 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
     {
       label: '編集(&E)',
       submenu: [...buildEditMenuItems(), buildSettingsMenuItem()]
+    },
+    {
+      label: 'ヘルプ(&H)',
+      submenu: buildHelpMenuItems()
     }
   ]
 }

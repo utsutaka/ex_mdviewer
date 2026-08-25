@@ -5,8 +5,10 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
+    "scripts/vite-plugins/**/*",
     "tests/unit/file-association/**/*",
-    "tests/unit/file-encoding/**/*"
+    "tests/unit/file-encoding/**/*",
+    "tests/unit/build-version/**/*"
   ],
   "compilerOptions": {
     "composite": true,

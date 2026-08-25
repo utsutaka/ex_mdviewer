@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { buildVersionPlugin } from './scripts/vite-plugins/build-version-plugin'
 
 export default defineConfig({
   main: {
@@ -8,7 +9,7 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin(), buildVersionPlugin()]
   },
   preload: {
     resolve: {
