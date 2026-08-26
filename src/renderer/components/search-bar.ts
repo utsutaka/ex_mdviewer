@@ -93,3 +93,23 @@ export function closeSearchBar(): void {
 export function isSearchBarOpen(): boolean {
   return barEl ? !barEl.hidden : !getBarEl().hidden
 }
+
+/** TOC表示状態切替時の状態同期用、現在の入力文字列を取得する（029-tab-toc-improvements FR-013a） */
+export function getSearchState(): { text: string } {
+  return { text: inputEl?.value ?? '' }
+}
+
+/**
+ * TOC表示状態切替時の状態同期用、入力文字列を適用し検索を再実行する
+ * （029-tab-toc-improvements FR-013a）。未初期化の場合は`ensureInitialized`を先に行う。
+ */
+export function applySearchState(state: { text: string }): void {
+  ensureInitialized()
+  if (!inputEl) {
+    return
+  }
+  inputEl.value = state.text
+  if (state.text) {
+    search(true, false)
+  }
+}

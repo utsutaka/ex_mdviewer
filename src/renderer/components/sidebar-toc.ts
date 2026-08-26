@@ -1,9 +1,10 @@
 import type { Heading } from '@shared/types'
 
-function getSidebarEl(): HTMLElement {
-  const el = document.getElementById('sidebar-toc')
+/** TOCサイドバー下部の見出し一覧コンテナ（029-tab-toc-improvements FR-008, FR-010） */
+function getSidebarListEl(): HTMLElement {
+  const el = document.getElementById('sidebar-toc-list')
   if (!el) {
-    throw new Error('sidebar-toc element not found')
+    throw new Error('sidebar-toc-list element not found')
   }
   return el
 }
@@ -116,15 +117,15 @@ export async function renderToc(
   contentContainerEl: HTMLElement,
   interactive = true
 ): Promise<void> {
-  const sidebar = getSidebarEl()
-  sidebar.innerHTML = ''
+  const list = getSidebarListEl()
+  list.innerHTML = ''
   if (headings.length === 0) {
     return
   }
-  sidebar.setAttribute('role', 'tree')
+  list.setAttribute('role', 'tree')
   const listEl = await buildListAsync(headings, contentContainerEl, { count: 0 }, interactive)
-  sidebar.appendChild(listEl)
-  initKeyboardNavigation(sidebar)
+  list.appendChild(listEl)
+  initKeyboardNavigation(list)
 }
 
 /**
@@ -133,8 +134,8 @@ export async function renderToc(
  * （research.md Decision 1）。表示・非表示設定（`tocVisible`）には触れない（Decision 2）。
  */
 export function clearToc(): void {
-  const sidebar = getSidebarEl()
-  sidebar.innerHTML = ''
+  const list = getSidebarListEl()
+  list.innerHTML = ''
 }
 
 let tocVisible = true
@@ -155,6 +156,19 @@ export function setTocVisible(visible: boolean): void {
 export function initTocVisible(initialVisible: boolean): void {
   tocVisible = initialVisible
   document.documentElement.classList.toggle('toc-hidden', !initialVisible)
+}
+
+/**
+ * TOCサイドバーが実際に画面へ表示されているか判定する（見出しが1件以上あり、かつtocVisibleがtrue）。
+ * 見出しデータ自体（Heading[]）はmain.ts側のタブ状態にのみ保持されているため、
+ * DOM描画結果（#sidebar-toc-listの子要素有無）を判定に用いる
+ * （029-tab-toc-improvements FR-011, FR-012。`/speckit-analyze` finding U2対応）。
+ */
+export function isTocSidebarVisible(): boolean {
+  if (!tocVisible) {
+    return false
+  }
+  return getSidebarListEl().children.length > 0
 }
 
 const TOC_WIDTH_MIN = 150

@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { basename, extname, resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import type {
   CloseTabRequest,
   CloseTabResponse,
@@ -80,7 +80,7 @@ export async function handleOpenFile(filePath: string): Promise<void> {
   const tabId = randomUUID()
   openTabs.set(tabId, { tabId, filePath })
 
-  const title = basename(filePath, extname(filePath))
+  const title = basename(filePath)
   const tabCreated: TabCreatedPayload = { tabId, filePath, title }
   win.webContents.send('tab-created', tabCreated)
 

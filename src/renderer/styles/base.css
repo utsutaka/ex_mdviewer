@@ -53,12 +53,26 @@ body {
     height: 100vh;
 }
 
-.tab-bar {
+.tab-bar-wrapper {
+    position: relative;
     flex: 0 0 auto;
     display: flex;
     border-bottom: 1px solid var(--border-color);
     background: var(--panel-bg);
-    overflow: hidden;
+}
+
+.tab-bar {
+    flex: 1 1 auto;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-width: 0;
+    /* スクロールボタンで操作するため、ネイティブのスクロールバー表示は隠す（見た目上のみ） */
+    scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+    display: none;
 }
 
 .workspace {
@@ -70,11 +84,24 @@ body {
 .sidebar-toc {
     flex: 0 0 var(--toc-width, 220px);
     background: var(--panel-bg);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
-.sidebar-toc:empty {
+/* 見出しを持たない文書では見出し一覧が空になり、TOCサイドバー自体を非表示にする（既存の:empty相当の自動非表示動作） */
+.sidebar-toc:has(#sidebar-toc-list:empty) {
     display: none;
+}
+
+.sidebar-toc-search {
+    flex: 0 0 auto;
+}
+
+.sidebar-toc-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .toc-hidden .sidebar-toc {
@@ -93,7 +120,7 @@ body {
     background: var(--accent-color);
 }
 
-.sidebar-toc:empty + .toc-resize-handle {
+.sidebar-toc:has(#sidebar-toc-list:empty) + .toc-resize-handle {
     display: none;
 }
 

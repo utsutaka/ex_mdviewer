@@ -1,4 +1,4 @@
-/* タブバー：スクロールや折りたたみを用いず、各タブの幅を縮小して常に全タブを表示する（FR-035） */
+/* タブバー：タブ幅は固定とし、収まらない分は横スクロールで対応する（029-tab-toc-improvements FR-002） */
 .tab-bar {
     align-items: stretch;
 }
@@ -7,13 +7,65 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: 220px;
+    flex: 0 0 220px;
     padding: 0 8px;
     border-right: 1px solid var(--border-color);
     cursor: pointer;
     outline: none;
+}
+
+/* タブバー横スクロールボタン（029-tab-toc-improvements FR-001a, FR-004, FR-005） */
+.tab-bar-scroll-btn {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--panel-bg);
+    color: var(--fg-color);
+    cursor: pointer;
+    padding: 0;
+}
+
+.tab-bar-scroll-btn:hover {
+    background: var(--border-color);
+}
+
+.tab-bar-scroll-btn:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent-color);
+}
+
+.tab-bar-scroll-btn[hidden] {
+    display: none;
+}
+
+.tab-bar-scroll-btn--left {
+    left: 0;
+}
+
+.tab-bar-scroll-btn--right {
+    right: 0;
+}
+
+.tab-bar-scroll-btn--left::before,
+.tab-bar-scroll-btn--right::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+}
+
+.tab-bar-scroll-btn--left::before {
+    border-right: 7px solid currentColor;
+}
+
+.tab-bar-scroll-btn--right::before {
+    border-left: 7px solid currentColor;
 }
 
 .tab-bar__tab.is-active {
@@ -114,7 +166,7 @@
     cursor: default;
 }
 
-#sidebar-toc > ul {
+#sidebar-toc-list > ul {
     padding: 8px 8px 8px 12px;
 }
 
@@ -134,6 +186,68 @@
 #sidebar-toc a:focus {
     background: var(--bg-color);
     outline: none;
+}
+
+/* TOCサイドバー上部の検索欄（029-tab-toc-improvements FR-008a, FR-008b） */
+.sidebar-toc-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-toc-search__input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sidebar-toc-search__input {
+    width: 100%;
+    padding: 4px 22px 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--fg-color);
+}
+
+.sidebar-toc-search__clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-color);
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.sidebar-toc-search__clear:hover {
+    opacity: 1;
+    background: var(--border-color);
+}
+
+.sidebar-toc-search__clear[hidden] {
+    display: none;
+}
+
+.sidebar-toc-search__count {
+    flex: 0 0 auto;
+    font-size: 12px;
+    opacity: 0.7;
+    min-width: 32px;
+    text-align: right;
 }
 
 #search-bar {

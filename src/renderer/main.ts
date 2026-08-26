@@ -8,11 +8,24 @@ import {
   getTocVisible,
   initTocVisible,
   initTocWidth,
+  isTocSidebarVisible,
   renderToc,
   scrollToHeading,
   setTocVisible
 } from './components/sidebar-toc'
-import { closeSearchBar, isSearchBarOpen, openSearchBar } from './components/search-bar'
+import {
+  closeSearchBar,
+  isSearchBarOpen,
+  openSearchBar,
+  getSearchState as getFloatingSearchState,
+  applySearchState as applyFloatingSearchState
+} from './components/search-bar'
+import {
+  initSidebarSearch,
+  focusSidebarSearch,
+  getSearchState as getSidebarSearchState,
+  applySearchState as applySidebarSearchState
+} from './components/sidebar-search'
 import { applyMermaidTheme, renderMermaidBlocks } from './markdown/mermaid'
 import { getTheme, initTheme, onThemeChange, setTheme } from './theme/theme-manager'
 import {
@@ -115,8 +128,36 @@ function setActiveTab(tabId: string): void {
   const tab = tabs.get(tabId)
   if (tab) {
     // raw表示中はTOC項目のクリックによるジャンプを無効化する（019-raw-source-toggle FR-012）
-    void renderToc(tab.headings, tab.containerEl, tab.displayMode !== 'raw')
+    void renderToc(tab.headings, tab.containerEl, tab.displayMode !== 'raw').then(() => {
+      syncSearchStateIfTocVisibilityChanged()
+    })
   }
+}
+
+/**
+ * TOCサイドバーの表示/非表示が直前の状態から変化した場合、非表示になる側の検索欄が
+ * 保持していた入力文字列を表示される側の検索欄へ引き継ぐ（FR-013a, SC-006、
+ * research.md Decision 6、`/speckit-analyze` finding C1対応）。
+ * `renderToc`完了後（タブ切替）と`setTocVisible`実行後（TOC表示トグル）の両方から呼び出す。
+ * TOCサイドバーが表示される側に変わった際、開いたままの浮動検索ウィンドウが
+ * 画面に残り続けないよう、状態を引き継いだうえで閉じる（実機確認フィードバック対応）。
+ */
+let lastTocSidebarVisible = false
+function syncSearchStateIfTocVisibilityChanged(): void {
+  const nowVisible = isTocSidebarVisible()
+  if (nowVisible === lastTocSidebarVisible) {
+    return
+  }
+  if (nowVisible) {
+    const state = getFloatingSearchState()
+    if (isSearchBarOpen()) {
+      closeSearchBar()
+    }
+    applySidebarSearchState(state)
+  } else {
+    applyFloatingSearchState(getSidebarSearchState())
+  }
+  lastTocSidebarVisible = nowVisible
 }
 
 /** タブのクローズ（001-core-viewer FR-026, FR-027） */
@@ -140,6 +181,15 @@ async function closeTab(tabId: string): Promise<void> {
       // 明示的にアクティブタブ状態をリセットしTOCサイドバーを空にする（025-fix-toc-close-last-tab FR-001, FR-002）
       activeTabId = ''
       clearToc()
+      // TOCサイドバーが表示→非表示に変わるため、この分岐でも状態同期を呼ばないと
+      // lastTocSidebarVisibleが更新されず、次にTOCが再表示された際の同期判定が
+      // 誤動作する（029-tab-toc-improvements FR-013a、Convergence T021対応）
+      syncSearchStateIfTocVisibilityChanged()
+      // 検索対象の本文自体が存在しなくなるため、開いたままの浮動検索ウィンドウを閉じる
+      // （029-tab-toc-improvements FR-013c、実機確認フィードバック対応）
+      if (isSearchBarOpen()) {
+        closeSearchBar()
+      }
     }
   }
 }
@@ -504,12 +554,20 @@ function initDragAndDrop(): void {
   })
 }
 
-/** Ctrl+Fで検索バーを開く/フォーカスする（FR-005） */
+/**
+ * Ctrl+Fで検索欄を開く/フォーカスする。TOCサイドバー表示中はサイドバー内検索欄へ
+ * フォーカスを移すのみとし、非表示中は従来通り浮動検索ウィンドウを開く
+ * （029-tab-toc-improvements FR-011, FR-012）。
+ */
 function initSearchShortcut(): void {
   window.addEventListener('keydown', (event) => {
     if (event.ctrlKey && event.key.toLowerCase() === 'f') {
       event.preventDefault()
-      openSearchBar()
+      if (isTocSidebarVisible()) {
+        focusSidebarSearch()
+      } else {
+        openSearchBar()
+      }
     } else if (event.key === 'Escape' && isSearchBarOpen()) {
       closeSearchBar()
     }
@@ -569,6 +627,7 @@ function initMenuThemeToggleListener(): void {
 function initMenuTocVisibilityToggleListener(): void {
   window.api.onMenuTocVisibilityToggleRequested(() => {
     setTocVisible(!getTocVisible())
+    syncSearchStateIfTocVisibilityChanged()
   })
 }
 
@@ -612,6 +671,7 @@ async function init(): Promise<void> {
   initTocVisible(settings.tocVisible)
   initTocWidth(settings.tocWidth)
   initContentWidthMode(settings.contentWidthMode)
+  initSidebarSearch()
 
   initSettingsResetListener()
   initFatalErrorListener()

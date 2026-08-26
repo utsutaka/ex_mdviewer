@@ -14,9 +14,16 @@
   </head>
   <body>
     <div id="app">
-      <div id="tab-bar" class="tab-bar"></div>
+      <div class="tab-bar-wrapper">
+        <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--left" aria-label="タブを左にスクロール" hidden></button>
+        <div id="tab-bar" class="tab-bar"></div>
+        <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--right" aria-label="タブを右にスクロール" hidden></button>
+      </div>
       <div class="workspace">
-        <nav id="sidebar-toc" class="sidebar-toc" aria-label="目次"></nav>
+        <nav id="sidebar-toc" class="sidebar-toc" aria-label="目次">
+          <div id="sidebar-toc-search" class="sidebar-toc-search"></div>
+          <div id="sidebar-toc-list" class="sidebar-toc-list"></div>
+        </nav>
         <div id="toc-resize-handle" class="toc-resize-handle" role="separator" aria-orientation="vertical" aria-label="目次の幅を変更"></div>
         <main id="content" class="content"></main>
       </div>
