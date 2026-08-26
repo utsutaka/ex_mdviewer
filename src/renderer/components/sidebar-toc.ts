@@ -37,6 +37,8 @@ async function buildListAsync(
     const link = document.createElement('a')
     link.href = `#${heading.anchorId}`
     link.textContent = heading.text
+    // サイドバー幅縮小時にellipsisで省略される見出しでも全文を確認できるようにする（030-toc-width-tooltip FR-003, FR-004）
+    link.title = heading.text
     link.setAttribute('role', 'treeitem')
     link.tabIndex = 0
     if (!interactive) {

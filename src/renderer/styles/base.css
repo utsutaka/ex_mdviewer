@@ -83,6 +83,7 @@ body {
 
 .sidebar-toc {
     flex: 0 0 var(--toc-width, 220px);
+    min-width: 0;
     background: var(--panel-bg);
     display: flex;
     flex-direction: column;
