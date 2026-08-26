@@ -74,7 +74,8 @@ describe('005-native-menu-save-toggle: 設定保存有無', () => {
       theme: 'light',
       tocVisible: true,
       tocWidth: 220,
-      contentWidthMode: 'readable'
+      contentWidthMode: 'readable',
+      folderHistory: []
     })
   })
 
@@ -135,7 +136,7 @@ describe('005-native-menu-save-toggle: 設定保存有無', () => {
   })
 })
 
-describe('012-remember-last-directory: 直近フォルダの記憶', () => {
+describe('031-folder-history-menu: フォルダ履歴', () => {
   beforeEach(() => {
     vi.resetModules()
     existsSyncMock.mockReset()
@@ -144,39 +145,91 @@ describe('012-remember-last-directory: 直近フォルダの記憶', () => {
     storeConstructorShouldThrow = false
   })
 
-  it('setAppSettingsで設定したlastOpenedDirectoryがgetAppSettingsで取得できる（FR-001, FR-002）', async () => {
+  it('setAppSettingsで設定したfolderHistoryがgetAppSettingsで取得できる（FR-001, FR-002）', async () => {
     existsSyncMock.mockReturnValue(false)
     const { getAppSettings, setAppSettings } = await importStore()
 
-    setAppSettings({ ...getAppSettings(), lastOpenedDirectory: 'C:\\Users\\utsutaka\\Documents' })
+    setAppSettings({ ...getAppSettings(), folderHistory: ['C:\\Users\\utsutaka\\Documents'] })
 
-    expect(getAppSettings().lastOpenedDirectory).toBe('C:\\Users\\utsutaka\\Documents')
+    expect(getAppSettings().folderHistory).toEqual(['C:\\Users\\utsutaka\\Documents'])
   })
 
-  it('enablePersistenceは、OFF→ON時にlastOpenedDirectoryを含むセッション状態をdefaultsとしてStoreへ書き出す（FR-004, spec.md Assumptions）', async () => {
+  it('enablePersistenceは、OFF→ON時にfolderHistoryを含むセッション状態をdefaultsとしてStoreへ書き出す（FR-009, spec.md Key Entities）', async () => {
     existsSyncMock.mockReturnValue(false)
     const { getAppSettings, setAppSettings, enablePersistence, isPersistenceEnabled } =
       await importStore()
     expect(isPersistenceEnabled()).toBe(false)
 
-    setAppSettings({ ...getAppSettings(), lastOpenedDirectory: 'D:\\Docs' })
+    setAppSettings({ ...getAppSettings(), folderHistory: ['D:\\Docs'] })
     const result = enablePersistence()
 
     expect(result).toBe(true)
-    expect(getAppSettings().lastOpenedDirectory).toBe('D:\\Docs')
+    expect(getAppSettings().folderHistory).toEqual(['D:\\Docs'])
   })
 
-  it('disablePersistenceは、ON→OFF時にlastOpenedDirectoryを含む現在値をセッション状態へコピーする（FR-005, spec.md Assumptions）', async () => {
+  it('disablePersistenceは、ON→OFF時にfolderHistoryを含む現在値をセッション状態へコピーする（FR-010, spec.md Key Entities）', async () => {
     existsSyncMock.mockReturnValue(true)
     const { getAppSettings, setAppSettings, disablePersistence } = await importStore()
 
-    setAppSettings({ ...getAppSettings(), lastOpenedDirectory: 'E:\\Projects' })
+    setAppSettings({ ...getAppSettings(), folderHistory: ['E:\\Projects'] })
     const result = disablePersistence()
 
     expect(result).toBe(true)
     expect(rmSyncMock).toHaveBeenCalledWith('C:\\fake\\userData\\config.json', { force: true })
-    // 削除後もセッション状態として直前の値（lastOpenedDirectory含む）を読み書きできる
-    expect(getAppSettings().lastOpenedDirectory).toBe('E:\\Projects')
+    // 削除後もセッション状態として直前の値（folderHistory含む）を読み書きできる
+    expect(getAppSettings().folderHistory).toEqual(['E:\\Projects'])
+  })
+
+  it('folderHistoryを持たず旧lastOpenedDirectoryのみを持つ永続化値は、1件のみ移行される（research.md Decision 3）', async () => {
+    existsSyncMock.mockReturnValue(false)
+    const { getAppSettings, setAppSettings } = await importStore()
+
+    // 旧バージョンが残した形状を模した書き込み（AppSettings型にはlastOpenedDirectoryは存在しないため、
+    // テスト内でのみ型を緩めてレガシー形状を再現する）
+    setAppSettings({
+      ...getAppSettings(),
+      ...({ lastOpenedDirectory: 'F:\\Legacy', folderHistory: undefined } as unknown as Partial<
+        ReturnType<typeof getAppSettings>
+      >)
+    })
+
+    expect(getAppSettings().folderHistory).toEqual(['F:\\Legacy'])
+  })
+
+  it('folderHistoryが既に有効な配列であれば、旧lastOpenedDirectoryが残っていても参照せずそちらを優先する（research.md Decision 3補足）', async () => {
+    existsSyncMock.mockReturnValue(false)
+    const { getAppSettings, setAppSettings } = await importStore()
+
+    setAppSettings({
+      ...getAppSettings(),
+      folderHistory: ['G:\\New'],
+      ...({ lastOpenedDirectory: 'H:\\Old' } as unknown as Partial<ReturnType<typeof getAppSettings>>)
+    })
+
+    expect(getAppSettings().folderHistory).toEqual(['G:\\New'])
+  })
+
+  it('folderHistoryが配列でない不正な値の場合は空配列として扱う（research.md Decision 2補足、防御的正規化）', async () => {
+    existsSyncMock.mockReturnValue(false)
+    const { getAppSettings, setAppSettings } = await importStore()
+
+    setAppSettings({
+      ...getAppSettings(),
+      ...({ folderHistory: 'not-an-array' } as unknown as Partial<ReturnType<typeof getAppSettings>>)
+    })
+
+    expect(getAppSettings().folderHistory).toEqual([])
+  })
+
+  it('folderHistoryが11件以上残っていた場合でも、読み出し時に10件へ切り詰める（FR-003の読み出し側保証）', async () => {
+    existsSyncMock.mockReturnValue(false)
+    const { getAppSettings, setAppSettings } = await importStore()
+    const oversized = Array.from({ length: 12 }, (_, i) => `C:\\Folder${i}`)
+
+    setAppSettings({ ...getAppSettings(), folderHistory: oversized })
+
+    expect(getAppSettings().folderHistory).toHaveLength(10)
+    expect(getAppSettings().folderHistory).toEqual(oversized.slice(0, 10))
   })
 })
 

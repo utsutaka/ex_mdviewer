@@ -30,7 +30,8 @@ const defaultAppSettings: AppSettings = {
   theme: 'light',
   tocVisible: true,
   tocWidth: 220,
-  contentWidthMode: 'readable'
+  contentWidthMode: 'readable',
+  folderHistory: []
 }
 
 const defaults: PersistedStore = {
@@ -102,8 +103,28 @@ export function updateWindowState(partial: Partial<WindowState>): void {
   setWindowState({ ...getWindowState(), ...partial })
 }
 
+/** 旧バージョン（012-remember-last-directory）が永続化先に残し得る形状 */
+interface LegacyAppSettings extends AppSettings {
+  lastOpenedDirectory?: string
+}
+
+/**
+ * 読み出したAppSettingsを新形式へ正規化する（031-folder-history-menu research.md Decision 3）。
+ * `folderHistory`が文字列のみの配列として既に有効であればそれをそのまま優先し、そうでない場合は
+ * 旧`lastOpenedDirectory`から1件のみ移行する（いずれも無ければ空配列）。config.json破損からの
+ * 復旧時や不正な値が混入していた場合も、この関数を通ることで安全側（空配列）に倒れる。
+ */
+function normalizeAppSettings(raw: LegacyAppSettings): AppSettings {
+  if (Array.isArray(raw.folderHistory) && raw.folderHistory.every((entry) => typeof entry === 'string')) {
+    return { ...raw, folderHistory: raw.folderHistory.slice(0, 10) }
+  }
+  const folderHistory = typeof raw.lastOpenedDirectory === 'string' ? [raw.lastOpenedDirectory] : []
+  return { ...raw, folderHistory }
+}
+
 export function getAppSettings(): AppSettings {
-  return storeInstance ? storeInstance.get('appSettings') : sessionState.appSettings
+  const raw = storeInstance ? storeInstance.get('appSettings') : sessionState.appSettings
+  return normalizeAppSettings(raw as LegacyAppSettings)
 }
 
 export function setAppSettings(settings: AppSettings): void {

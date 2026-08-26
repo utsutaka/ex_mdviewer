@@ -1,65 +1,99 @@
 import { Menu, dialog } from 'electron'
-import { dirname } from 'node:path'
 import type { OpenFileDialogErrorPayload, SettingsPersistenceErrorPayload } from '@shared/types'
-import {
-  disablePersistence,
-  enablePersistence,
-  getAppSettings,
-  isPersistenceEnabled,
-  setAppSettings
-} from './store'
+import { disablePersistence, enablePersistence, getAppSettings, isPersistenceEnabled } from './store'
 import { getMainWindow } from './window'
 import { handleOpenFile } from './ipc/handlers'
 import { appVersion } from './app-version'
 
 /**
- * 「ファイル」メニューの項目（009-native-menu-file-edit FR-002〜FR-005）。
+ * 「ファイルを開く...」ダイアログを表示する共通処理（031-folder-history-menu research.md
+ * Decision 4）。通常の「ファイルを開く...」項目・フォルダ履歴の各項目のいずれからも、
+ * `defaultPath`だけを変えて呼び出される。フォルダ履歴への記録自体はここでは行わず、
+ * 実際にファイルが選択され`handleOpenFile()`が呼ばれた時点で行われる（research.md Decision 5）。
+ */
+async function openFileDialogAt(defaultPath?: string): Promise<void> {
+  const win = getMainWindow()
+  if (!win) {
+    return
+  }
+  try {
+    const result = await dialog.showOpenDialog(win, {
+      defaultPath,
+      properties: ['openFile'],
+      filters: [
+        {
+          name: '対応ファイル',
+          extensions: ['md', 'json', 'yaml', 'yml', 'xml', 'html', 'htm', 'pdf']
+        },
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'YAML', extensions: ['yaml', 'yml'] },
+        { name: 'XML', extensions: ['xml'] },
+        { name: 'HTML', extensions: ['html', 'htm'] },
+        { name: 'PDF', extensions: ['pdf'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return
+    }
+    void handleOpenFile(result.filePaths[0])
+  } catch {
+    const payload: OpenFileDialogErrorPayload = {
+      message: 'ファイルを開くダイアログの表示に失敗しました'
+    }
+    win.webContents.send('open-file-dialog-error', payload)
+  }
+}
+
+/**
+ * 「フォルダ履歴のつづき」submenu内の項目を含む、フォルダ履歴1件分のメニュー項目を生成する
+ * （031-folder-history-menu FR-005, FR-006, FR-008）。ラベルはフォルダの絶対パスをそのまま
+ * 表示し、アクセスキーは割り当てない（research.md Decision 7）。
+ */
+function buildFolderHistoryItem(folder: string): Electron.MenuItemConstructorOptions {
+  return {
+    label: folder,
+    click: () => {
+      void openFileDialogAt(folder)
+    }
+  }
+}
+
+/**
+ * 「ファイル」メニューの項目（009-native-menu-file-edit FR-002〜FR-005、
+ * 031-folder-history-menu FR-004〜FR-008, FR-013）。
  * ネイティブのファイル選択ダイアログでMarkdownファイルのみを選択候補とし、
  * 選択結果を既存のhandleOpenFile()（ipc/handlers.ts）へそのまま渡す。
+ * フォルダ履歴が1件以上ある場合、区切り線に続けて上位3件を直接項目として表示し、
+ * 4件目以降（最大7件）は「フォルダ履歴のつづき」submenuにまとめる。
  */
 function buildFileMenuItems(): Electron.MenuItemConstructorOptions[] {
-  return [
+  const folderHistory = getAppSettings().folderHistory
+  const items: Electron.MenuItemConstructorOptions[] = [
     {
       label: 'ファイルを開く...(&O)',
       accelerator: 'Ctrl+O',
-      click: async () => {
-        const win = getMainWindow()
-        if (!win) {
-          return
-        }
-        try {
-          const result = await dialog.showOpenDialog(win, {
-            defaultPath: getAppSettings().lastOpenedDirectory,
-            properties: ['openFile'],
-            filters: [
-              {
-                name: '対応ファイル',
-                extensions: ['md', 'json', 'yaml', 'yml', 'xml', 'html', 'htm', 'pdf']
-              },
-              { name: 'Markdown', extensions: ['md'] },
-              { name: 'JSON', extensions: ['json'] },
-              { name: 'YAML', extensions: ['yaml', 'yml'] },
-              { name: 'XML', extensions: ['xml'] },
-              { name: 'HTML', extensions: ['html', 'htm'] },
-              { name: 'PDF', extensions: ['pdf'] }
-            ]
-          })
-          if (result.canceled || result.filePaths.length === 0) {
-            return
-          }
-          // 直近フォルダを記憶する（012-remember-last-directory FR-001。「設定を保存する」の
-          // ON/OFFに応じた永続化・非永続化はsetAppSettings()側で既存機構がそのまま適用される）
-          setAppSettings({ ...getAppSettings(), lastOpenedDirectory: dirname(result.filePaths[0]) })
-          void handleOpenFile(result.filePaths[0])
-        } catch {
-          const payload: OpenFileDialogErrorPayload = {
-            message: 'ファイルを開くダイアログの表示に失敗しました'
-          }
-          win.webContents.send('open-file-dialog-error', payload)
-        }
+      click: () => {
+        void openFileDialogAt(folderHistory[0])
       }
     }
   ]
+
+  if (folderHistory.length === 0) {
+    return items
+  }
+
+  items.push({ type: 'separator' }, ...folderHistory.slice(0, 3).map(buildFolderHistoryItem))
+
+  const rest = folderHistory.slice(3, 10)
+  if (rest.length > 0) {
+    items.push({
+      label: 'フォルダ履歴のつづき(&C)',
+      submenu: rest.map(buildFolderHistoryItem)
+    })
+  }
+
+  return items
 }
 
 /**

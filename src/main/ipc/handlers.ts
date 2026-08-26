@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { basename, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import type {
   CloseTabRequest,
   CloseTabResponse,
@@ -24,6 +24,7 @@ import { resolveFileKind } from '@shared/file-kind'
 import { decodeFileBuffer } from '../file-encoding'
 import { yamlToStructuredNodes } from '../yaml-adapter'
 import { unwatchFile, watchFile } from '../file-watcher'
+import { addFolderToHistory } from '../folder-history'
 import { refreshAppMenu } from '../menu'
 import { isPdfSignatureValid } from '../pdf-signature'
 import { startPdfPageTracking, stopPdfPageTracking } from '../pdf-page-tracker'
@@ -53,6 +54,10 @@ function findExistingTabByPath(filePath: string): TabRuntimeState | undefined {
  * コンテンツ読み込みの完了を待たずtab-createdを即座に送出し、
  * 複数要求はawaitで直列化しないことで互いをブロックしない（FR-034）。
  * 同一ファイルが既に開かれている場合は新規作成せず該当タブへフォーカスする（FR-038）。
+ *
+ * ダイアログ経由・ドラッグ&ドロップ・二重起動・初回起動引数のいずれもこの関数に合流するため
+ * （031-folder-history-menu research.md Decision 1）、新規タブ作成/既存タブフォーカスの
+ * 分岐より前でフォルダ履歴への記録を行い、経路によらず一律に適用する（FR-001〜FR-003）。
  */
 export async function handleOpenFile(filePath: string): Promise<void> {
   const win = getMainWindow()
@@ -69,6 +74,12 @@ export async function handleOpenFile(filePath: string): Promise<void> {
     win.webContents.send('unsupported-file', payload)
     return
   }
+
+  setAppSettings({
+    ...getAppSettings(),
+    folderHistory: addFolderToHistory(getAppSettings().folderHistory, dirname(filePath))
+  })
+  refreshAppMenu()
 
   const existing = findExistingTabByPath(filePath)
   if (existing) {

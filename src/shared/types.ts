@@ -93,8 +93,12 @@ export interface AppSettings {
   tocWidth: number
   /** 本文表示幅のモード（アプリ全体で共通、FR-001〜FR-003） */
   contentWidthMode: ContentWidthMode
-  /** 「ファイルを開く」ダイアログの初期表示フォルダ。未記憶の場合はundefined（012-remember-last-directory） */
-  lastOpenedDirectory?: string
+  /**
+   * 過去にファイルが開かれたフォルダの絶対パスを新しい順に並べた一覧。最大10件、同一フォルダの
+   * 重複は含まない（031-folder-history-menu FR-001〜FR-003）。旧`lastOpenedDirectory`（単一値、
+   * 012-remember-last-directory）はこのフィールドへ統合され廃止された。
+   */
+  folderHistory: string[]
 }
 
 /** electron-storeに永続化するスキーマ全体（constitution原則VI） */
