@@ -8,6 +8,8 @@ export interface SidebarSearchState {
 let inputEl: HTMLInputElement | null = null
 let countEl: HTMLSpanElement | null = null
 let clearBtnEl: HTMLButtonElement | null = null
+let prevBtn: HTMLButtonElement | null = null
+let nextBtn: HTMLButtonElement | null = null
 let initialized = false
 
 function getContainerEl(): HTMLElement {
@@ -18,11 +20,33 @@ function getContainerEl(): HTMLElement {
   return el
 }
 
+/** 移動ボタンの活性/非活性を一致件数に応じて切り替える（FR-007） */
+function updateNavButtons(hasMatches: boolean): void {
+  if (prevBtn) {
+    prevBtn.disabled = !hasMatches
+  }
+  if (nextBtn) {
+    nextBtn.disabled = !hasMatches
+  }
+}
+
 function updateCount(payload: FindInPageResultPayload): void {
   if (!countEl) {
     return
   }
   countEl.textContent = payload.matches === 0 ? '0/0' : `${payload.activeMatchOrdinal}/${payload.matches}`
+  updateNavButtons(payload.matches > 0)
+}
+
+/** ↑↓キーによる次候補・前候補移動（検索欄・移動ボタンの両方に登録する） */
+function handleArrowKeyNav(event: KeyboardEvent): void {
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    search(false, true)
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    search(true, true)
+  }
 }
 
 function search(forward: boolean, findNext: boolean): void {
@@ -32,6 +56,10 @@ function search(forward: boolean, findNext: boolean): void {
     if (countEl) {
       countEl.textContent = ''
     }
+    updateNavButtons(false)
+    // stopFindInPageによる本文側へのフォーカス移動が非同期に発生する（Electron #22880）ため、
+    // 同一イベントループ内でfocus()しても上書きされる。次のイベントループまで遅延させて戻す
+    setTimeout(() => inputEl?.focus(), 0)
     return
   }
   window.api.findInPage(text, forward, findNext)
@@ -56,7 +84,8 @@ function clearSearch(): void {
     countEl.textContent = ''
   }
   updateClearButtonVisibility()
-  inputEl.focus()
+  updateNavButtons(false)
+  setTimeout(() => inputEl?.focus(), 0)
 }
 
 /**
@@ -79,6 +108,7 @@ export function initSidebarSearch(): void {
   inputEl.type = 'text'
   inputEl.className = 'sidebar-toc-search__input'
   inputEl.placeholder = '検索'
+  inputEl.autocomplete = 'off'
   inputEl.setAttribute('aria-label', '目次内検索')
 
   clearBtnEl = document.createElement('button')
@@ -94,18 +124,38 @@ export function initSidebarSearch(): void {
   countEl = document.createElement('span')
   countEl.className = 'sidebar-toc-search__count'
 
-  container.append(inputWrap, countEl)
+  prevBtn = document.createElement('button')
+  prevBtn.type = 'button'
+  prevBtn.className = 'sidebar-toc-search__nav-btn'
+  prevBtn.textContent = '▲'
+  prevBtn.setAttribute('aria-label', '前の候補')
+  prevBtn.disabled = true
+  prevBtn.addEventListener('click', () => search(false, true))
+  prevBtn.addEventListener('keydown', handleArrowKeyNav)
+
+  nextBtn = document.createElement('button')
+  nextBtn.type = 'button'
+  nextBtn.className = 'sidebar-toc-search__nav-btn'
+  nextBtn.textContent = '▼'
+  nextBtn.setAttribute('aria-label', '次の候補')
+  nextBtn.disabled = true
+  nextBtn.addEventListener('click', () => search(true, true))
+  nextBtn.addEventListener('keydown', handleArrowKeyNav)
+
+  container.append(inputWrap, countEl, prevBtn, nextBtn)
 
   inputEl.addEventListener('input', () => {
     search(true, false)
     updateClearButtonVisibility()
   })
 
-  /** Enter/Shift+Enterによるキーボードのみでの次候補・前候補移動（既存search-bar.tsのFR-030相当を踏襲） */
+  /** Enter/Shift+Enter/↑↓によるキーボードのみでの次候補・前候補移動（既存search-bar.tsのFR-030相当を踏襲） */
   inputEl.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       search(!event.shiftKey, true)
+    } else {
+      handleArrowKeyNav(event)
     }
   })
 
