@@ -18,10 +18,10 @@ function applyContentWidthModeClass(mode: ContentWidthMode): void {
 export function setContentWidthMode(mode: ContentWidthMode): void {
   currentContentWidthMode = mode
   applyContentWidthModeClass(mode)
-  window.api.contentWidthModeChanged(mode)
+  window.contentApi.contentWidthModeChanged(mode)
 }
 
-/** 起動時、永続化済みの表示幅モードを適用する（IPC送出は行わない） */
+/** 起動時、または他Viewからの`content-width-mode-updated`受信時に適用する（IPC送出は行わない） */
 export function initContentWidthMode(initialMode: ContentWidthMode): void {
   currentContentWidthMode = initialMode
   applyContentWidthModeClass(initialMode)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveRefTarget } from '../../../src/renderer/structured-data/tree-viewer'
+import { resolveRefTarget } from '../../../src/renderer/content/structured-data/tree-viewer'
 
 describe('resolveRefTarget', () => {
   it('同一ファイル内参照（#/で始まる）の場合、#を除いたJSON Pointerパスを返す', () => {

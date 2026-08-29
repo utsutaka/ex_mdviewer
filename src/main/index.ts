@@ -6,7 +6,7 @@ import {
   closeSplashWindow,
   createMainWindow,
   createSplashWindow,
-  getMainWindow
+  getContentView
 } from './window'
 import { getWindowState, wasConfigReset } from './store'
 import { closeAllTabs, handleOpenFile, registerIpcHandlers, setupFoundInPageRelay } from './ipc/handlers'
@@ -29,11 +29,13 @@ function extractSupportedFilePathFromArgv(argv: string[]): string | undefined {
  */
 process.on('uncaughtException', (error) => {
   closeSplashWindow()
-  const win = getMainWindow()
-  if (win) {
-    win.webContents.send('fatal-error', error.message)
+  // 033-webcontentsview-search-fix: モーダル・トースト通知は本文Viewに属する
+  // （research.md Decision 10）。本文Viewが未生成・破棄済みの場合はネイティブ
+  // ダイアログにフォールバックする（Constitution V）。
+  const view = getContentView()
+  if (view) {
+    view.webContents.send('fatal-error', error.message)
   } else {
-    // メインウィンドウが未生成のため、レンダラー側モーダルの代わりにネイティブダイアログで通知する（Constitution V）
     dialog.showErrorBox('mdviewer', error.message)
   }
 })
@@ -71,12 +73,16 @@ if (!gotLock) {
         app.quit()
         return
       }
-      setupFoundInPageRelay(win)
+      setupFoundInPageRelay()
       attachQuitConfirmation(win, closeAllTabs)
 
-      win.webContents.once('did-finish-load', () => {
+      // 033-webcontentsview-search-fix: 4View分離に伴い、トップレベルのwin.webContentsには
+      // 何もロードしないため、本文ViewのwebContentsの読み込み完了を待つ（本文Viewは
+      // createMainWindow内で同期的に生成されるため、win生成直後にgetContentView()で取得できる）
+      const contentView = getContentView()
+      contentView?.webContents.once('did-finish-load', () => {
         if (wasConfigReset()) {
-          win.webContents.send('settings-reset')
+          contentView.webContents.send('settings-reset')
         }
 
         const initialFilePath = extractSupportedFilePathFromArgv(process.argv)

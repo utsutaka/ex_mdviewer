@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>mdviewer - 検索</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/components.css" />
+    <style>
+      /* 033-webcontentsview-search-fix: Viewの矩形（460x44）とカード状の#search-bar
+         本体の実サイズが一致しないため、body自体の背景を透過にし、Viewの背景色設定
+         （window.ts setBackgroundColor）と合わせて余白が目立たないようにする */
+      html,
+      body {
+        background: transparent !important;
+      }
+      /* フロート検索Viewはそれ自体が独立したViewになったため、.search-barの元々の
+         position: absolute配置（本文上への重ね表示）は不要（Viewのbounds自体が
+         mainプロセス側で本文右上に配置される、research.md Decision 1a）。
+         View全体を占める通常のフローに変更する。 */
+      .search-bar {
+        position: static !important;
+        top: auto !important;
+        right: auto !important;
+      }
+      /* #search-barはブロック要素としてView幅（460px）いっぱいに広がってしまい、
+         justify-content未指定のflexboxでは中身より広い分がアイテム間・右端の余白として
+         目立ってしまう不具合が実機で確認された。コンテンツの実際の幅にフィットさせ、
+         各アイテムの意図しない伸縮も止める */
+      #search-bar {
+        width: fit-content !important;
+        justify-content: flex-start !important;
+      }
+      #search-bar > * {
+        flex: 0 0 auto !important;
+      }
+      /* 閉じるボタンに専用クラスがなく、他のflexアイテム（入力欄・件数・移動ボタン）に
+         幅を取られて縮小され、テキストが折り返される不具合が実機で確認された */
+      #search-bar > button {
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="search-bar" class="search-bar"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

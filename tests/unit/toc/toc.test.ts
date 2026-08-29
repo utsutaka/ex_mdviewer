@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractHeadings } from '../../../src/renderer/markdown/toc'
+import { extractHeadings } from '../../../src/renderer/content/markdown/toc'
 
 describe('extractHeadings', () => {
   it('フラットな見出し構造を階層化する', () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { extractHeadingsFromDom } from '../../../src/renderer/html-view/render-html'
+import { extractHeadingsFromDom } from '../../../src/renderer/content/html-view/render-html'
 
 function createContainer(html: string): HTMLElement {
   const el = document.createElement('div')

@@ -1,7 +1,7 @@
 import { Menu, dialog } from 'electron'
 import type { OpenFileDialogErrorPayload, SettingsPersistenceErrorPayload } from '@shared/types'
 import { disablePersistence, enablePersistence, getAppSettings, isPersistenceEnabled } from './store'
-import { getMainWindow } from './window'
+import { getContentView, getMainWindow, getSidebarTocView, getTabBarView } from './window'
 import { handleOpenFile } from './ipc/handlers'
 import { appVersion } from './app-version'
 
@@ -41,7 +41,8 @@ async function openFileDialogAt(defaultPath?: string): Promise<void> {
     const payload: OpenFileDialogErrorPayload = {
       message: 'ファイルを開くダイアログの表示に失敗しました'
     }
-    win.webContents.send('open-file-dialog-error', payload)
+    // トースト通知は本文Viewに属する（research.md Decision 10）
+    getContentView()?.webContents.send('open-file-dialog-error', payload)
   }
 }
 
@@ -110,7 +111,9 @@ function buildEditMenuItems(): Electron.MenuItemConstructorOptions[] {
       type: 'checkbox',
       checked: settings.theme === 'dark',
       click: () => {
-        getMainWindow()?.webContents.send('menu-theme-toggle-requested')
+        // 033-webcontentsview-search-fix: テーマ切替の起点はタブバーView
+        // （常時存在するViewの1つ、research.md Decision 6）
+        getTabBarView()?.webContents.send('menu-theme-toggle-requested')
       }
     },
     {
@@ -118,7 +121,7 @@ function buildEditMenuItems(): Electron.MenuItemConstructorOptions[] {
       type: 'checkbox',
       checked: !settings.tocVisible,
       click: () => {
-        getMainWindow()?.webContents.send('menu-toc-visibility-toggle-requested')
+        getSidebarTocView()?.webContents.send('menu-toc-visibility-toggle-requested')
       }
     },
     {
@@ -126,7 +129,7 @@ function buildEditMenuItems(): Electron.MenuItemConstructorOptions[] {
       type: 'checkbox',
       checked: settings.contentWidthMode === 'full',
       click: () => {
-        getMainWindow()?.webContents.send('menu-content-width-toggle-requested')
+        getContentView()?.webContents.send('menu-content-width-toggle-requested')
       }
     }
   ]
@@ -151,7 +154,7 @@ function buildSettingsMenuItem(): Electron.MenuItemConstructorOptions {
             ? '設定の保存を有効にできませんでした'
             : '設定の保存を無効にできませんでした'
         }
-        getMainWindow()?.webContents.send('settings-persistence-error', payload)
+        getContentView()?.webContents.send('settings-persistence-error', payload)
       }
       registerAppMenu()
     }

@@ -1,7 +1,6 @@
 import DOMPurify from 'dompurify'
 import GithubSlugger from 'github-slugger'
 import type { FileOpenedPayload, Heading } from '@shared/types'
-import { renderToc } from '../components/sidebar-toc'
 import { renderMermaidBlocksInDom } from '../markdown/mermaid'
 import type { TabRuntime } from '../main'
 
@@ -74,9 +73,15 @@ export function scopeStyleContent(css: string, tabId: string): string {
  * 消失し、`body`セレクタや`<body>`のstyle属性による指定が反映できなくなるため。
  * 027-fix-html-style-scope FR-002、research.md Decision 10）。これにより<title>要素は
  * doc.head側に留まりcontainerElへは移さないため、従来の除去処理（`:scope > title`）は不要になった。
- * `isActive`がtrueの場合のみTOCを描画する（activeTabIdの判定はmain.ts側の責務）。
+ * 033-webcontentsview-search-fix: TOC描画はTOCサイドバーViewの責務になったため、直接
+ * `renderToc`を呼ぶ代わりに`notifyHeadingListUpdated`コールバック経由でIPC通知する
+ * （research.md Decision 4）。アクティブタブかどうかの判定は呼び出し元（コールバック内）で行う。
  */
-export function renderHtmlDocumentInto(tab: TabRuntime, payload: FileOpenedPayload, isActive: boolean): void {
+export function renderHtmlDocumentInto(
+  tab: TabRuntime,
+  payload: FileOpenedPayload,
+  notifyHeadingListUpdated: (tab: TabRuntime, interactive: boolean) => void
+): void {
   tab.containerEl.innerHTML = ''
 
   if (payload.isEmptyFile) {
@@ -103,7 +108,5 @@ export function renderHtmlDocumentInto(tab: TabRuntime, payload: FileOpenedPaylo
   tab.headings = extractHeadingsFromDom(tab.containerEl)
   // HTML内のpre.mermaid/div.mermaidブロックを図として描画する（017-html-mermaid-support FR-001〜FR-002）
   renderMermaidBlocksInDom(tab.containerEl)
-  if (isActive) {
-    void renderToc(tab.headings, tab.containerEl)
-  }
+  notifyHeadingListUpdated(tab, true)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveContainerClassName } from '../../../src/renderer/tab-container'
+import { resolveContainerClassName } from '../../../src/renderer/content/tab-container'
 
 describe('resolveContainerClassName', () => {
   it('htmlの場合はdocument-paneに加えて判別用クラスdocument-pane--htmlを返す', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRawToggleSupported } from '../../../src/renderer/raw-source/render-raw'
+import { isRawToggleSupported } from '../../../src/renderer/content/raw-source/render-raw'
 
 describe('isRawToggleSupported', () => {
   it('markdownの場合はtrueを返す', () => {

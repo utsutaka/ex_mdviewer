@@ -36,3 +36,13 @@ function extractExtension(filePath: string): string {
 export function resolveFileKind(filePath: string): FileKind | null {
   return EXTENSION_TO_KIND[extractExtension(filePath).toLowerCase()] ?? null
 }
+
+/**
+ * raw表示切替の対象fileKindかどうかを判定する（019-raw-source-toggle FR-011）。
+ * Markdown・HTMLタブのみが対象で、JSON/YAML/XML・PDFにはトグルアイコン自体を表示しない。
+ * 033-webcontentsview-search-fixでタブバーView（アイコン表示判定）・本文View
+ * （実際の表示切替）の双方から参照するためshared化した。
+ */
+export function isRawToggleSupported(fileKind: FileKind): boolean {
+  return fileKind === 'markdown' || fileKind === 'html'
+}

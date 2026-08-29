@@ -1,6 +1,5 @@
-import type { FileKind } from '@shared/types'
-import type { DisplayMode } from '../main'
-import { isRawToggleSupported } from '../raw-source/render-raw'
+import type { DisplayMode, FileKind } from '@shared/types'
+import { isRawToggleSupported } from '@shared/file-kind'
 
 export interface TabBarCallbacks {
   onActivate: (tabId: string) => void

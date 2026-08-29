@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderMarkdown } from '../../../src/renderer/markdown/render'
+import { renderMarkdown } from '../../../src/renderer/content/markdown/render'
 
 describe('renderMarkdown', () => {
   it('GFMテーブルをtable要素へ変換する', () => {

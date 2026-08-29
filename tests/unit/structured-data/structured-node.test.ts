@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toStructuredNodeFromJson } from '../../../src/renderer/structured-data/json-adapter'
+import { toStructuredNodeFromJson } from '../../../src/renderer/content/structured-data/json-adapter'
 import { yamlToStructuredNodes } from '../../../src/main/yaml-adapter'
 
 describe('toStructuredNodeFromJson', () => {

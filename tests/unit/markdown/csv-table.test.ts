@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsvLenient, renderCsvTable } from '../../../src/renderer/markdown/csv-table'
+import { parseCsvLenient, renderCsvTable } from '../../../src/renderer/content/markdown/csv-table'
 
 describe('parseCsvLenient', () => {
   it('基本的なカンマ区切りを行×セルの二次元配列に変換する', () => {

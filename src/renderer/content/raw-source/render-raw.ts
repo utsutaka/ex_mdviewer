@@ -1,12 +1,9 @@
-import type { FileKind } from '@shared/types'
-
 /**
- * raw表示切替の対象fileKindかどうかを判定する（019-raw-source-toggle FR-011）。
- * Markdown・HTMLタブのみが対象で、JSON/YAML/XML・PDFにはトグルアイコン自体を表示しない。
+ * 033-webcontentsview-search-fix: タブバーView（アイコン表示判定）・本文View（実際の
+ * 表示切替）の双方から参照するためshared/file-kind.tsへ移動した。既存importパスを
+ * 壊さないようre-exportする。
  */
-export function isRawToggleSupported(fileKind: FileKind): boolean {
-  return fileKind === 'markdown' || fileKind === 'html'
-}
+export { isRawToggleSupported } from '@shared/file-kind'
 
 /**
  * 生データ表示を描画する（FR-002, FR-003, FR-014）。専用の装飾（バッジ・背景色等）を持たず、

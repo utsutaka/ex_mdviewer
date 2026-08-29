@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { detectMermaidElements } from '../../../src/renderer/markdown/mermaid'
+import { detectMermaidElements } from '../../../src/renderer/content/markdown/mermaid'
 
 function createContainer(html: string): HTMLElement {
   const el = document.createElement('div')

@@ -1,8 +1,8 @@
-import { BrowserWindow, dialog, screen, session } from 'electron'
+import { BrowserWindow, WebContentsView, dialog, screen, session } from 'electron'
 import { join } from 'node:path'
 import type { WindowState } from '@shared/types'
 import { attachExternalLinkGuard } from './external-link-guard'
-import { updateWindowState } from './store'
+import { getAppSettings, updateWindowState } from './store'
 
 /**
  * constitution原則II: CSPにより外部通信を全面禁止する。
@@ -44,6 +44,156 @@ export function getMainWindow(): BrowserWindow | null {
 
 export function getSplashWindow(): BrowserWindow | null {
   return splashWindow
+}
+
+/**
+ * 033-webcontentsview-search-fix: UIと本文を4つのWebContentsView（タブバーView・
+ * TOCサイドバーView・フロート検索View・本文View）に分離する（research.md Decision 1a）。
+ * `webContents.findInPage`がページ全体を検索対象にするというElectronの仕様上の制約を、
+ * 対象を本文ViewのwebContentsのみに絞ることで回避する（FR-002）。
+ * 既存レイアウト（タブバー上部・TOCサイドバー左・検索バーが本文に重ねて浮く）はL字型＋
+ * オーバーレイであり、矩形boundsでしか配置できないWebContentsViewでは単純な2分割では
+ * 表現できないため、矩形ごとに分割する（透過合成2View構成はマウスイベント制御が
+ * 困難なため不採用、research.md Decision 1a）。
+ */
+let tabBarView: WebContentsView | null = null
+let sidebarTocView: WebContentsView | null = null
+let searchFloatView: WebContentsView | null = null
+let contentView: WebContentsView | null = null
+/**
+ * フロート検索Viewの表示状態（`setVisible`の値そのものを保持）。
+ * `searchInUse`（FocusLockState、フォーカスの有無）とは別の状態であり、タブ切り替え等で
+ * フロート検索の入力欄がフォーカスを失っても（`searchInUse`がfalseになっても）、
+ * View自体は表示されたままになりうる。TOC表示/非表示に連動したフロート検索の
+ * 自動開閉判定（handlers.ts `handleTocVisibilityChangeForSearch`）はこちらを参照する
+ * 必要があるため、フォーカス状態と混同しないよう別変数として管理する（実機フィードバック対応）。
+ */
+let searchFloatVisible = false
+
+export function getTabBarView(): WebContentsView | null {
+  return tabBarView
+}
+
+export function getSidebarTocView(): WebContentsView | null {
+  return sidebarTocView
+}
+
+export function getSearchFloatView(): WebContentsView | null {
+  return searchFloatView
+}
+
+/** フロート検索Viewが現在表示されているか（`searchInUse`＝フォーカス有無とは独立、実機フィードバック対応） */
+export function isSearchFloatVisible(): boolean {
+  return searchFloatVisible
+}
+
+export function getContentView(): WebContentsView | null {
+  return contentView
+}
+
+/** タブバーの高さ（`base.css`の`.tab-bar-wrapper`と一致させる、FR-006） */
+const TAB_BAR_HEIGHT = 36
+
+/**
+ * フロート検索Viewの既定サイズ（本文View右上に重ねて配置、FR-006）。
+ * 入力欄・件数表示・移動ボタン（▲▼）・閉じるボタンを横一列に収める必要があるため、
+ * 360pxでは閉じるボタンの幅がほぼ確保できず折り返される不具合が実機で確認された。
+ */
+const SEARCH_FLOAT_WIDTH = 460
+const SEARCH_FLOAT_HEIGHT = 44
+const SEARCH_FLOAT_MARGIN = 12
+
+/**
+ * ウィンドウ全体・TOC幅・TOC表示状態・フロート検索の開閉状態から4Viewのboundsを
+ * 一元的に算出し適用する（data-model.md ViewBounds）。ウィンドウのresizeイベント、
+ * TOC幅・表示状態の変更、フロート検索の開閉のいずれからも呼び出される単一の関数とする
+ * ことで、レイアウト計算ロジックが分散しないようにする（research.md Decision 1a
+ * 「実装上の留意点」）。
+ */
+export function relayoutViews(win: BrowserWindow): void {
+  if (!tabBarView || !sidebarTocView || !contentView) {
+    return
+  }
+  const bounds = win.contentView.getBounds()
+  const { width, height } = bounds
+  const settings = getAppSettings()
+  const tocWidth = settings.tocVisible ? settings.tocWidth : 0
+  const contentHeight = Math.max(0, height - TAB_BAR_HEIGHT)
+  const contentWidth = Math.max(0, width - tocWidth)
+
+  tabBarView.setBounds({ x: 0, y: 0, width, height: TAB_BAR_HEIGHT })
+  sidebarTocView.setBounds({ x: 0, y: TAB_BAR_HEIGHT, width: tocWidth, height: contentHeight })
+  contentView.setBounds({ x: tocWidth, y: TAB_BAR_HEIGHT, width: contentWidth, height: contentHeight })
+
+  if (searchFloatView) {
+    const floatX = tocWidth + Math.max(0, contentWidth - SEARCH_FLOAT_WIDTH - SEARCH_FLOAT_MARGIN)
+    searchFloatView.setBounds({
+      x: floatX,
+      y: TAB_BAR_HEIGHT + SEARCH_FLOAT_MARGIN,
+      width: Math.min(SEARCH_FLOAT_WIDTH, contentWidth),
+      height: SEARCH_FLOAT_HEIGHT
+    })
+  }
+}
+
+function createViewPreferences(preloadFileName: string): Electron.WebPreferences {
+  return {
+    preload: join(__dirname, `../preload/${preloadFileName}`),
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true
+  }
+}
+
+function loadViewContent(view: WebContentsView, htmlDirName: string): void {
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    // electron-viteのrendererはrootを`src/renderer`に設定しているため、
+    // devサーバーURLからの相対パスは`src/renderer`を含まない
+    void view.webContents.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/${htmlDirName}/index.html`)
+  } else {
+    void view.webContents.loadFile(join(__dirname, `../renderer/${htmlDirName}/index.html`))
+  }
+}
+
+/**
+ * フロート検索Viewはウィンドウ生成時に一度だけ生成し、以降は`setVisible`で
+ * 表示/非表示のみを切り替える（破棄・再生成しない）。実機フィードバックにより、
+ * 開くたびに新規Viewを生成・ロードする方式（research.md Decision 1a当初案）は
+ * 表示までの体感速度が遅く、`setVisible`方式へ変更した。HTML/JSのロードコストは
+ * ウィンドウ生成時の1回のみで、以降のメモリ増加は生成済みView1つ分に留まる。
+ */
+function createSearchFloatView(win: BrowserWindow): WebContentsView {
+  const view = new WebContentsView({ webPreferences: createViewPreferences('search-float-preload.js') })
+  // Viewの矩形（460x44）とカード状の#search-bar本体の実サイズが一致しないため、
+  // 背景を透過にしてView自体の余白が目立たないようにする（本文が透けて見える）
+  view.setBackgroundColor('#00000000')
+  win.contentView.addChildView(view)
+  loadViewContent(view, 'search-float')
+  view.setVisible(false)
+  return view
+}
+
+export function openSearchFloatView(win: BrowserWindow): WebContentsView {
+  if (!searchFloatView) {
+    searchFloatView = createSearchFloatView(win)
+  }
+  searchFloatView.setVisible(true)
+  searchFloatVisible = true
+  relayoutViews(win)
+  // renderer側のinputEl.focus()はDOM上のフォーカスに過ぎず、OSレベルでこのView自体が
+  // キーボードフォーカスを持っていないと実際の入力は届かないため、明示的に focus() する
+  searchFloatView.webContents.focus()
+  // 033-webcontentsview-search-fix: Viewは常時存在し`init()`はロード時の1回しか
+  // 実行されないため、開くたびにDOM側のフォーカス処理（inputEl.focus()等）を
+  // 再実行させる通知が必要
+  searchFloatView.webContents.send('search-float-shown')
+  return searchFloatView
+}
+
+/** フロート検索Viewを非表示にする（破棄はしない、`setVisible`方式）。開いていない場合は何もしない */
+export function closeSearchFloatView(): void {
+  searchFloatView?.setVisible(false)
+  searchFloatVisible = false
 }
 
 /**
@@ -174,16 +324,20 @@ function attachBoundsPersistence(win: BrowserWindow): void {
  * 意図的にリロードする設計を持たないため、初回ロードのみ許可し以降のmainFrameへのロードは
  * すべてブロックする。
  */
-function preventUnintendedMainFrameReload(win: BrowserWindow): void {
+/**
+ * 033-webcontentsview-search-fix: 4View分離に伴い、PDFを実際に表示する本文Viewの
+ * webContentsのみを対象にする（分離前は単一webContentsだった`win.webContents`の代わり）。
+ */
+function preventUnintendedMainFrameReload(_win: BrowserWindow, targetWebContents: Electron.WebContents): void {
   let guardEnabled = false
   // 初回ロードが完全に完了するまでガードを無効化する。初回ロード中に発生しうる
   // 複数リクエスト（内部的なリダイレクト等を含む可能性がある）をすべて許可したうえで、
   // did-finish-load以降のmainFrameへの再ロードのみを対象にブロックする
-  win.webContents.once('did-finish-load', () => {
+  targetWebContents.once('did-finish-load', () => {
     guardEnabled = true
   })
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    if (guardEnabled && details.resourceType === 'mainFrame' && details.webContentsId === win.webContents.id) {
+    if (guardEnabled && details.resourceType === 'mainFrame' && details.webContentsId === targetWebContents.id) {
       callback({ cancel: true })
       return
     }
@@ -206,16 +360,49 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
     show: false,
     autoHideMenuBar: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: true
+    }
+  })
+
+  // 4つのWebContentsView（タブバーView・TOCサイドバーView・本文View・フロート検索View）
+  // を生成する。フロート検索Viewは非表示状態で事前生成しておき、開くたびの新規生成による
+  // 体感遅延を避ける（実機フィードバック対応、`createSearchFloatView`参照）
+  tabBarView = new WebContentsView({ webPreferences: createViewPreferences('tab-bar-preload.js') })
+  sidebarTocView = new WebContentsView({ webPreferences: createViewPreferences('sidebar-toc-preload.js') })
+  contentView = new WebContentsView({
+    webPreferences: {
+      ...createViewPreferences('content-preload.js'),
       // Chromium内蔵PDFビューアプラグインを有効化する（011-html-pdf-viewer FR-005）
       plugins: true
     }
   })
 
-  win.once('ready-to-show', () => {
+  win.contentView.addChildView(tabBarView)
+  win.contentView.addChildView(sidebarTocView)
+  win.contentView.addChildView(contentView)
+
+  loadViewContent(tabBarView, 'tab-bar')
+  loadViewContent(sidebarTocView, 'sidebar-toc')
+  loadViewContent(contentView, 'content')
+
+  searchFloatView = createSearchFloatView(win)
+
+  relayoutViews(win)
+  win.on('resize', () => relayoutViews(win))
+
+  // 033-webcontentsview-search-fix: トップレベルのwin自体には何もロードしないため、
+  // `ready-to-show`（通常はロード完了後に発火）は発火しない。代わりに3つのViewすべての
+  // 初回読み込み完了を待ってから表示する。
+  Promise.all(
+    [tabBarView, sidebarTocView, contentView].map(
+      (view) =>
+        new Promise<void>((resolvePromise) => {
+          view.webContents.once('did-finish-load', () => resolvePromise())
+        })
+    )
+  ).then(() => {
     if (initialState.isMaximized) {
       win.maximize()
     }
@@ -223,19 +410,20 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
     closeSplashWindow()
   })
 
-  preventUnintendedMainFrameReload(win)
-
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  // PDFビューアの「再読み込み」ボタン等による意図しない再ナビゲーションを防ぐガードは、
+  // PDFを実際に表示する本文ViewのwebContentsに対して適用する（4View化前は単一webContents
+  // だったため`win.webContents`に対して適用していた）
+  preventUnintendedMainFrameReload(win, contentView.webContents)
 
   attachBoundsPersistence(win)
-  attachExternalLinkGuard(win)
+  attachExternalLinkGuard(win, contentView.webContents)
 
   mainWindow = win
   win.on('closed', () => {
+    tabBarView = null
+    sidebarTocView = null
+    searchFloatView = null
+    contentView = null
     mainWindow = null
   })
 

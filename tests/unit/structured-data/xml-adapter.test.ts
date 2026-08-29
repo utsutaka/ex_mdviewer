@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { toStructuredNodeFromXml } from '../../../src/renderer/structured-data/xml-adapter'
+import { toStructuredNodeFromXml } from '../../../src/renderer/content/structured-data/xml-adapter'
 
 function parseXml(xml: string): Document {
   return new DOMParser().parseFromString(xml, 'application/xml')

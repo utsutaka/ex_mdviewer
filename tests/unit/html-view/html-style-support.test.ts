@@ -1,19 +1,22 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import type { FileOpenedPayload } from '@shared/types'
-import { renderHtmlDocumentInto } from '../../../src/renderer/html-view/render-html'
-import type { TabRuntime } from '../../../src/renderer/main'
+import { renderHtmlDocumentInto } from '../../../src/renderer/content/html-view/render-html'
+import type { TabRuntime } from '../../../src/renderer/content/main'
 
 function createTab(): TabRuntime {
   return {
     tabId: 'test-tab',
     filePath: 'test.html',
-    title: 'test.html',
     containerEl: document.createElement('div'),
     headings: [],
-    fileKind: 'html'
+    fileKind: 'html',
+    displayMode: 'rendered',
+    rawSourceText: ''
   }
 }
+
+const noopNotify = (): void => {}
 
 function createPayload(rawContent: string): FileOpenedPayload {
   return {
@@ -35,21 +38,21 @@ describe('renderHtmlDocumentInto - styleブロックの保持', () => {
   it('<head>内のstyleブロックが除去されずに保持される', () => {
     const tab = createTab()
     const html = '<html><head><style>.red{color:red}</style></head><body><p class="red">test</p></body></html>'
-    renderHtmlDocumentInto(tab, createPayload(html), false)
+    renderHtmlDocumentInto(tab, createPayload(html), noopNotify)
     expect(tab.containerEl.querySelector('style')).not.toBeNull()
   })
 
   it('<body>直下（<head>なし）のstyleブロックも保持される', () => {
     const tab = createTab()
     const html = '<style>.red{color:red}</style><p class="red">test</p>'
-    renderHtmlDocumentInto(tab, createPayload(html), false)
+    renderHtmlDocumentInto(tab, createPayload(html), noopNotify)
     expect(tab.containerEl.querySelector('style')).not.toBeNull()
   })
 
   it('要素に直接指定されたstyle属性はそのまま残る', () => {
     const tab = createTab()
     const html = '<p style="color: blue;">test</p>'
-    renderHtmlDocumentInto(tab, createPayload(html), false)
+    renderHtmlDocumentInto(tab, createPayload(html), noopNotify)
     const p = tab.containerEl.querySelector('p')
     expect(p?.getAttribute('style')).toBe('color: blue;')
   })
@@ -57,7 +60,7 @@ describe('renderHtmlDocumentInto - styleブロックの保持', () => {
   it('<html>/<head>/<body>を持たない断片HTMLでもエラーにならずstyleが保持される', () => {
     const tab = createTab()
     const html = '<h1>見出し</h1><style>.red{color:red}</style>'
-    expect(() => renderHtmlDocumentInto(tab, createPayload(html), false)).not.toThrow()
+    expect(() => renderHtmlDocumentInto(tab, createPayload(html), noopNotify)).not.toThrow()
     expect(tab.containerEl.querySelector('style')).not.toBeNull()
   })
 })
@@ -66,14 +69,14 @@ describe('renderHtmlDocumentInto - title要素の非表示化とSVG内titleの�
   it('<head>内のtitle要素がcontainerEl直下から除去される', () => {
     const tab = createTab()
     const html = '<html><head><title>ページタイトル</title></head><body><h1>本文</h1></body></html>'
-    renderHtmlDocumentInto(tab, createPayload(html), false)
+    renderHtmlDocumentInto(tab, createPayload(html), noopNotify)
     expect(tab.containerEl.querySelector(':scope > title')).toBeNull()
   })
 
   it('SVG内のtitle要素は除去されず維持される', () => {
     const tab = createTab()
     const html = '<svg width="24" height="24"><title>アイコンの説明</title><circle cx="12" cy="12" r="10" /></svg>'
-    renderHtmlDocumentInto(tab, createPayload(html), false)
+    renderHtmlDocumentInto(tab, createPayload(html), noopNotify)
     expect(tab.containerEl.querySelector('svg title')).not.toBeNull()
   })
 })
