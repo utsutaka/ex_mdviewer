@@ -46,3 +46,12 @@ export function resolveFileKind(filePath: string): FileKind | null {
 export function isRawToggleSupported(fileKind: FileKind): boolean {
   return fileKind === 'markdown' || fileKind === 'html'
 }
+
+/**
+ * TOCサイドバー表示対象のfileKindかどうかを判定する（034-toc-filekind-scope FR-001, FR-003）。
+ * 対象範囲はisRawToggleSupportedと同じ（Markdown・HTMLのみ）だが、両者は意味的に独立した
+ * 判定であるため別関数として定義する（research.md Decision 1参照）。
+ */
+export function isTocSupported(fileKind: FileKind): boolean {
+  return fileKind === 'markdown' || fileKind === 'html'
+}

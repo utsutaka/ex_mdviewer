@@ -1,6 +1,8 @@
 import { BrowserWindow, WebContentsView, dialog, screen, session } from 'electron'
 import { join } from 'node:path'
 import type { WindowState } from '@shared/types'
+import type { FileKind } from '@shared/file-kind'
+import { isTocSupported } from '@shared/file-kind'
 import { attachExternalLinkGuard } from './external-link-guard'
 import { getAppSettings, updateWindowState } from './store'
 
@@ -65,10 +67,25 @@ let contentView: WebContentsView | null = null
  * `searchInUse`（FocusLockState、フォーカスの有無）とは別の状態であり、タブ切り替え等で
  * フロート検索の入力欄がフォーカスを失っても（`searchInUse`がfalseになっても）、
  * View自体は表示されたままになりうる。TOC表示/非表示に連動したフロート検索の
- * 自動開閉判定（handlers.ts `handleTocVisibilityChangeForSearch`）はこちらを参照する
- * 必要があるため、フォーカス状態と混同しないよう別変数として管理する（実機フィードバック対応）。
+ * 自動開閉判定（handlers.ts `syncSearchUiWithTocVisibility`・`migrateTocSearchToFloatOnHide`）
+ * はこちらを参照する必要があるため、フォーカス状態と混同しないよう別変数として管理する
+ * （実機フィードバック対応）。
  */
 let searchFloatVisible = false
+
+/**
+ * 現在アクティブなタブのファイル種別（034-toc-filekind-scope data-model.md「ランタイム状態」）。
+ * `relayoutViews`のTOC幅計算でのみ参照する。タブが1件も開かれていない場合は`null`。
+ * mainプロセス側の依存方向（ipc/handlers.ts → window.ts）を維持するため、タブ管理状態
+ * （`openTabs`・`currentActiveTabId`、ipc/handlers.ts）とは二重管理せず、アクティブタブ切替の
+ * 起点となる箇所（handlers.ts）からこのsetterを呼んでもらう方式にする（research.md Decision 2）。
+ */
+let activeTabFileKind: FileKind | null = null
+
+/** アクティブタブのファイル種別を更新する（034-toc-filekind-scope、呼び出し後は`relayoutViews`の再実行が必要） */
+export function setActiveTabFileKind(fileKind: FileKind | null): void {
+  activeTabFileKind = fileKind
+}
 
 export function getTabBarView(): WebContentsView | null {
   return tabBarView
@@ -104,6 +121,30 @@ const SEARCH_FLOAT_HEIGHT = 44
 const SEARCH_FLOAT_MARGIN = 12
 
 /**
+ * TOCサイドバーが実際に表示されているか（034-toc-filekind-scope）。
+ * `settings.tocVisible`（利用者設定）と、現在アクティブなタブのfileKindがTOC対応かどうかの
+ * 両方を考慮する。設定がONでも非対応fileKind（PDF・JSON・YAML・XML）の場合はfalseを返す。
+ * Ctrl+F押下時にTOC内検索・フロート検索のどちらを開くか（ipc/handlers.ts）等、
+ * 「サイドバーが実際に画面上に見えているか」を必要とする箇所で`settings.tocVisible`単独の
+ * 判定を使うと、非対応fileKind表示中にTOC内検索（実際には幅0で不可視）へフォーカスしようと
+ * してしまい、Ctrl+Fが見かけ上機能しなくなる不具合につながるため、この関数を必ず使用する。
+ */
+export function isTocSidebarVisible(): boolean {
+  const settings = getAppSettings()
+  return settings.tocVisible && isActiveTabTocSupportedFileKind()
+}
+
+/**
+ * tocVisible設定を考慮せず、現在アクティブなタブのfileKindだけでTOC対応可否を判定する
+ * （034-toc-filekind-scope）。`toc-visibility-changed`ハンドラでtocVisible設定を更新した
+ * 直後に「変更前は実際にTOCが表示されていたか」を判定する場合など、`isTocSidebarVisible()`
+ * では設定変更後の値しか取れず判定できないケースのために公開する。
+ */
+export function isActiveTabTocSupportedFileKind(): boolean {
+  return activeTabFileKind !== null && isTocSupported(activeTabFileKind)
+}
+
+/**
  * ウィンドウ全体・TOC幅・TOC表示状態・フロート検索の開閉状態から4Viewのboundsを
  * 一元的に算出し適用する（data-model.md ViewBounds）。ウィンドウのresizeイベント、
  * TOC幅・表示状態の変更、フロート検索の開閉のいずれからも呼び出される単一の関数とする
@@ -117,7 +158,10 @@ export function relayoutViews(win: BrowserWindow): void {
   const bounds = win.contentView.getBounds()
   const { width, height } = bounds
   const settings = getAppSettings()
-  const tocWidth = settings.tocVisible ? settings.tocWidth : 0
+  // 034-toc-filekind-scope FR-001, FR-002, FR-007: アクティブタブがMarkdown・HTML以外
+  // （PDF・JSON・YAML・XML、またはタブなし）の場合、tocVisibleの値に関わらずTOC幅を0にする。
+  // settings.tocWidth自体は変更しないため、対応種別のタブへ戻れば従来の幅で復元される。
+  const tocWidth = isTocSidebarVisible() ? settings.tocWidth : 0
   const contentHeight = Math.max(0, height - TAB_BAR_HEIGHT)
   const contentWidth = Math.max(0, width - tocWidth)
 

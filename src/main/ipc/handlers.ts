@@ -49,10 +49,13 @@ import {
   getSidebarTocView,
   getTabBarView,
   isSearchFloatVisible,
+  isActiveTabTocSupportedFileKind,
+  isTocSidebarVisible,
   markQuitHandled,
   openSearchFloatView,
   relayoutViews,
-  restoreAndFocusWindow
+  restoreAndFocusWindow,
+  setActiveTabFileKind
 } from '../window'
 
 interface TabRuntimeState {
@@ -138,6 +141,11 @@ export async function handleOpenFile(filePath: string): Promise<void> {
     getTabBarView()?.webContents.send('focus-tab', payload)
     const activatePayload: ActivateTabContentPayload = { tabId: existing.tabId }
     getContentView()?.webContents.send('activate-tab-content', activatePayload)
+    // 034-toc-filekind-scope FR-001, FR-005: 既存タブへフォーカスした場合もそのfileKindで
+    // TOCサイドバーの表示状態を再計算する
+    setActiveTabFileKind(resolveFileKind(existing.filePath))
+    relayoutViews(win)
+    syncSearchUiWithTocVisibility(win)
     return
   }
 
@@ -145,6 +153,11 @@ export async function handleOpenFile(filePath: string): Promise<void> {
   openTabs.set(tabId, { tabId, filePath })
   // 新規タブは作成後に自動的にアクティブ化されるため、検索状態もここで切り替える
   clearSearchOnTabSwitch(tabId)
+  // 034-toc-filekind-scope FR-001, FR-005: 新規タブも作成直後にアクティブ化されるため、
+  // このfileKindでTOCサイドバーの表示状態を再計算する
+  setActiveTabFileKind(fileKind)
+  relayoutViews(win)
+  syncSearchUiWithTocVisibility(win)
 
   const title = basename(filePath)
   const tabCreated: TabCreatedPayload = { tabId, filePath, title }
@@ -219,6 +232,15 @@ function removeTabRuntimeState(tabId: string, tab: TabRuntimeState): void {
   }
   const payload: TabContentClosedPayload = { tabId }
   getContentView()?.webContents.send('tab-content-closed', payload)
+  // 034-toc-filekind-scope FR-008: タブが1件も残らなくなった場合もTOC非表示（幅0）にする
+  if (openTabs.size === 0) {
+    setActiveTabFileKind(null)
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win)
+      syncSearchUiWithTocVisibility(win)
+    }
+  }
 }
 
 /**
@@ -309,17 +331,37 @@ let currentActiveTabId: string | null = null
 const searchTextByTabId = new Map<string, string>()
 
 /**
- * TOCサイドバーの表示/非表示切替と、検索UIの自動切替を連動させる（実機フィードバック対応）。
- * - フロート検索が表示中にTOCが表示された場合: フロート検索を閉じ、TOCサイドバー内検索へ
- *   フォーカスを移し、現在の検索文字列を復元する。
- *   この判定は`searchInUse`（フォーカスの有無）ではなく`isSearchFloatVisible()`
- *   （フロート検索Viewの表示状態そのもの）を用いる。タブ切り替え時にタブバーViewへ
- *   OSレベルのキーボードフォーカスが移ることで、フロート検索の入力欄がblurし
- *   `searchInUse`がfalseになる場合があるが、フロート検索View自体は表示され続けており、
- *   その状態でTOCを表示してもフロート検索が閉じない不具合が実機で確認されたため。
- * - TOCサイドバー内検索使用中にTOCが非表示になった場合: フロート検索を開きフォーカスを移し、
- *   現在の検索文字列を復元する。こちらは「TOC内検索を実際に使用中（searchInUse）」の
- *   場合のみ発動し、検索を使っていないときのTOC非表示化には影響しない。
+ * TOC対応タブ（Markdown/HTML）に入る際、フロート検索が開いていれば「このsyncが自動的に
+ * 閉じた」ことを記録するためのフラグ。TOC非対応タブへ戻った際、このフラグが立っている場合
+ * にのみフロート検索を復元する。ユーザーが一度もフロート検索を開いていない状態から
+ * タブ切替だけでフロート検索が新規に表示されることはない（034-toc-filekind-scope FR-012、
+ * うつたかさんの実機フィードバックにより「継続表示」とは既存のセッションを維持することを
+ * 指し、未使用状態からの新規ポップアップを意味しないことが判明したための設計変更）。
+ */
+let floatSearchPendingRestore = false
+
+/**
+ * TOCサイドバーの実効表示状態（`isTocSidebarVisible()`、tocVisible設定とfileKind判定の
+ * 組み合わせ）に応じて、フロート検索・TOCサイドバー内検索の開閉を同期する
+ * （034-toc-filekind-scope FR-012）。
+ *
+ * tocVisible設定がOFFの場合は既存（003-toc-toggle/029-tab-toc-improvements）のフロート検索
+ * 単独運用のまま変更しない（この関数は何もしない）。
+ *
+ * tocVisible設定がONの場合:
+ * - TOC対応タブ（Markdown/HTML）に入った際、フロート検索が開いていればそれを閉じ、
+ *   閉じたという事実を`floatSearchPendingRestore`に記録した上でTOC内検索を開く。
+ * - TOC非対応タブ（PDF/JSON/YAML/XML、またはタブなし）に入った際、直前に本関数が
+ *   フロート検索を自動的に閉じていた場合（`floatSearchPendingRestore`）に限り、
+ *   フロート検索を再度開く。フロート検索が一度も開かれていない状態（利用者がまだ
+ *   Ctrl+Fを押していない状態）では、このタブ切替だけを理由に新規で表示することはない。
+ *
+ * 旧実装は「TOC内検索を実際に使用中か」を`searchInUse`（フォーカスの有無）で判定していたが、
+ * タブ切り替えはタブバークリックというマウス操作を伴うため、クリックによるOSキーボード
+ * フォーカス移動（blur）とのタイミング競合で`searchInUse`が意図せずfalseになり、
+ * フロート検索への復元が発動しない不具合が実機で確認された。`floatSearchPendingRestore`は
+ * 本関数自身が明示的に立てる・消費するフラグであり、フォーカスの有無に左右されない。
+ *
  * `findNext: true`（新規セッション開始）で検索し直しても、本文側に前回検索の選択位置が
  * 残ったままだと、Chromiumはその選択位置から前方一致を探すため検索位置（アクティブな
  * 一致の順番）が切替のたびに1件ずつ進んでしまう不具合が実機で確認された。そのため
@@ -327,11 +369,18 @@ const searchTextByTabId = new Map<string, string>()
  * （renderer側`search`関数の`findNext: true`と組み合わせて、件数・位置とも1件目から
  * 正しく引き継がれる）。
  */
-function handleTocVisibilityChangeForSearch(tocVisible: boolean, win: Electron.BrowserWindow): void {
+function syncSearchUiWithTocVisibility(win: Electron.BrowserWindow): void {
+  if (!getAppSettings().tocVisible) {
+    return
+  }
   const restoredText = currentActiveTabId !== null ? (searchTextByTabId.get(currentActiveTabId) ?? '') : ''
-  if (tocVisible && isSearchFloatVisible()) {
+  if (isTocSidebarVisible()) {
+    if (!isSearchFloatVisible()) {
+      return
+    }
     getContentView()?.webContents.stopFindInPage('clearSelection')
     closeSearchFloatView()
+    floatSearchPendingRestore = true
     activeSearchView = 'toc'
     const view = getSidebarTocView()
     view?.webContents.focus()
@@ -339,12 +388,45 @@ function handleTocVisibilityChangeForSearch(tocVisible: boolean, win: Electron.B
     view?.webContents.send('restore-search-text', { text: restoredText })
     return
   }
-  if (!tocVisible && searchInUse && activeSearchView === 'toc') {
-    getContentView()?.webContents.stopFindInPage('clearSelection')
-    activeSearchView = 'float'
-    openSearchFloatView(win)
-    getSearchFloatView()?.webContents.send('restore-search-text', { text: restoredText })
+  if (!floatSearchPendingRestore || isSearchFloatVisible()) {
+    return
   }
+  floatSearchPendingRestore = false
+  activeSearchView = 'float'
+  openSearchFloatView(win)
+  getSearchFloatView()?.webContents.send('restore-search-text', { text: restoredText })
+}
+
+/**
+ * メニューで「目次を隠す」を選択しtocVisible設定がOFFになった際、切り替え直前まで
+ * TOCサイドバーが実際に表示されており、かつ現在のタブに検索文字列が入力済みだった場合、
+ * 検索を継続できるようフロート検索へ引き継ぐ（003-toc-toggle/029-tab-toc-improvements
+ * 由来の既存挙動、`toc-visibility-changed`ハンドラからのみ呼び出す）。
+ * `syncSearchUiWithTocVisibility`はtocVisible設定がOFFの間何もしない設計のため、
+ * この引き継ぎ処理は別関数として分離している。
+ *
+ * 判定には`activeTabFileKind`ベースの`isActiveTabTocSupportedFileKind()`（設定変更後の
+ * `tocVisible`の影響を受けない、現在のタブのfileKindのみによる判定）と、タブごとに
+ * 独立して保持される`searchTextByTabId`（現在のタブの検索文字列の有無）のみを用いる。
+ *
+ * 以前は`searchInUse`・`activeSearchView`（いずれもタブをまたいで共有されるグローバルな
+ * 状態で、直前に検索を使った別タブでの操作履歴を引きずってしまう）で判定していたため、
+ * 「目次を隠す」をどのタブで押したかによってフロート検索が引き継がれたり
+ * されなかったりする不具合が実機で確認された。タブに固有の情報のみを判定材料とすることで
+ * この不整合を解消する。
+ */
+function migrateTocSearchToFloatOnHide(win: Electron.BrowserWindow): void {
+  if (!isActiveTabTocSupportedFileKind()) {
+    return
+  }
+  const text = currentActiveTabId !== null ? (searchTextByTabId.get(currentActiveTabId) ?? '') : ''
+  if (!text) {
+    return
+  }
+  getContentView()?.webContents.stopFindInPage('clearSelection')
+  activeSearchView = 'float'
+  openSearchFloatView(win)
+  getSearchFloatView()?.webContents.send('restore-search-text', { text })
 }
 
 /**
@@ -498,6 +580,15 @@ export function registerIpcHandlers(): void {
   ipcMain.on('activate-tab', (_event, payload: ActivateTabContentPayload) => {
     clearSearchOnTabSwitch(payload.tabId)
     getContentView()?.webContents.send('activate-tab-content', payload)
+    // 034-toc-filekind-scope FR-001, FR-005: タブバークリックによるアクティブ化でも
+    // 切替後のタブのfileKindでTOCサイドバーの表示状態を再計算する
+    const activatedTab = openTabs.get(payload.tabId)
+    const activateWin = getMainWindow()
+    if (activatedTab && activateWin) {
+      setActiveTabFileKind(resolveFileKind(activatedTab.filePath))
+      relayoutViews(activateWin)
+      syncSearchUiWithTocVisibility(activateWin)
+    }
   })
 
   // ---- フロート検索の開閉（research.md Decision 1a） ----
@@ -510,6 +601,12 @@ export function registerIpcHandlers(): void {
   ipcMain.on('close-search-float', () => {
     closeSearchFloatView()
     searchInUse = false
+    // フロート検索ViewをsetVisible(false)しただけではOSレベルのキーボードフォーカスが
+    // 移らず、非表示のまま同Viewがフォーカスを保持し続けてしまう（実機フィードバック対応）。
+    // この状態だとCtrl+Fが本文View・タブバーViewいずれにも届かず、タブや本文を
+    // 一度クリックしないと再度フロート検索を開けなくなる不具合が発生するため、
+    // 閉じた直後に明示的に本文Viewへフォーカスを戻す。
+    getContentView()?.webContents.focus()
   })
 
   /**
@@ -522,7 +619,10 @@ export function registerIpcHandlers(): void {
     if (!win) {
       return
     }
-    if (getAppSettings().tocVisible) {
+    // 034-toc-filekind-scope: tocVisible設定単独ではなく、実際にTOCサイドバーが
+    // 表示されているか（fileKind判定込み）で分岐する。そうしないとPDF等の表示中に
+    // 幅0で不可視のTOC内検索へフォーカスしようとしてCtrl+Fが機能しなくなる。
+    if (isTocSidebarVisible()) {
       const view = getSidebarTocView()
       // rendererからのinputEl.focus()はDOM上のフォーカスに過ぎず、OSレベルで
       // このView自体がキーボードフォーカスを持っていないと実際の入力は届かない
@@ -561,7 +661,10 @@ export function registerIpcHandlers(): void {
     const win = getMainWindow()
     if (win) {
       relayoutViews(win)
-      handleTocVisibilityChangeForSearch(request.visible, win)
+      if (!request.visible) {
+        migrateTocSearchToFloatOnHide(win)
+      }
+      syncSearchUiWithTocVisibility(win)
     }
   })
 
