@@ -14,6 +14,10 @@
       }
       .tab-bar-wrapper {
         flex: 1 1 auto;
+        /* 029-tab-toc-improvements FR-001リグレッション修正: bodyのflex-directionが
+           既定のrowであるため、min-width指定がないとタブ本数分のコンテンツ幅（#tab-bar）
+           に押し広げられ、あふれが発生せず横スクロールボタンが表示されなくなっていた */
+        min-width: 0;
       }
     </style>
   </head>
