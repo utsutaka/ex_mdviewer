@@ -17,7 +17,9 @@ import type {
   TabContentCreatedPayload,
   Theme,
   ToggleDisplayModeRequest,
-  UnsupportedFilePayload
+  UnsupportedFilePayload,
+  ZoomDeltaRequest,
+  ZoomUpdatedPayload
 } from '@shared/types'
 
 /** 本文View向けAPI（plan.md「既存preload/index.tsのAPI割り当て」参照） */
@@ -54,6 +56,9 @@ const api = {
   },
   notifyTabLoaded(tabId: string): void {
     ipcRenderer.send('tab-loaded', { tabId })
+  },
+  notifyZoomDelta(payload: ZoomDeltaRequest): void {
+    ipcRenderer.send('zoom-delta', payload)
   },
 
   onTabContentCreated(callback: (payload: TabContentCreatedPayload) => void): () => void {
@@ -141,6 +146,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, payload: PdfPageInfoPayload): void => callback(payload)
     ipcRenderer.on('pdf-page-info', listener)
     return () => ipcRenderer.removeListener('pdf-page-info', listener)
+  },
+  onZoomUpdated(callback: (payload: ZoomUpdatedPayload) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: ZoomUpdatedPayload): void => callback(payload)
+    ipcRenderer.on('zoom-updated', listener)
+    return () => ipcRenderer.removeListener('zoom-updated', listener)
   },
   onThemeUpdated(callback: (theme: Theme) => void): () => void {
     const listener = (_event: Electron.IpcRendererEvent, request: { theme: Theme }): void => callback(request.theme)

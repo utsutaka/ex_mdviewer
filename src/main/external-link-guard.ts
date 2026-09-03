@@ -64,6 +64,17 @@ async function openExternalWithConfirmation(
 }
 
 /**
+ * `WebFrameMain.url`が空文字列・`about:blank`・未定義のいずれかの場合、
+ * そのフレームがまだ何もロードしていない「初回のsrc設定によるロード」であると判定する
+ * （036-iframe-html-view research.md Decision 3）。HTML表示のiframe（`<iframe src="file://...">`）は
+ * 生成時の初回`src`設定自体も`will-frame-navigate`イベントを発火させるため、この判定で
+ * リンククリック等の2回目以降のナビゲーションと区別し、初回ロードのみ許可する。
+ */
+export function isInitialFrameLoad(currentFrameUrl: string | undefined): boolean {
+  return currentFrameUrl === '' || currentFrameUrl === 'about:blank' || currentFrameUrl === undefined
+}
+
+/**
  * 本文中のhttp/https/fileリンククリック時、Electronの既定動作のままだとレンダラー全体が
  * その宛先へナビゲートしてしまい、mdviewerの全タブが消失する既存不具合を修正する。
  * will-navigateで常にアプリ内ナビゲーションをブロックし、スキームごとに個別処理する
@@ -73,6 +84,14 @@ async function openExternalWithConfirmation(
  * 本文ViewのwebContents（`targetWebContents`）に限定する。確認ダイアログの表示元は
  * 引き続き`BaseWindow`基準（`win`）とし、失敗時のトースト通知も本文View（トーストは
  * 本文Viewに属する、research.md Decision 10）へ送る。
+ *
+ * 036-iframe-html-view: HTML表示タブのiframe内リンククリックはメインフレームではなく
+ * サブフレームのナビゲーションとして発生するため、`will-navigate`（メインフレームのみ対象）
+ * では検知できない。`will-frame-navigate`（メインフレーム・サブフレームいずれも対象）を
+ * 追加で監視し、`isInitialFrameLoad`でiframeの初回ロードを除外した上で、既存と同じ
+ * `classifyUrlScheme`→スキーム別処理へ合流させる（research.md Decision 2, 3）。
+ * メインフレームのナビゲーションは`will-navigate`側で既に処理されるため、
+ * `isMainFrame === true`の場合はここでは何もしない（二重処理防止）。
  */
 export function attachExternalLinkGuard(win: BrowserWindow, targetWebContents: Electron.WebContents): void {
   targetWebContents.on('will-navigate', (event, url) => {
@@ -88,5 +107,25 @@ export function attachExternalLinkGuard(win: BrowserWindow, targetWebContents: E
       void openExternalWithConfirmation(win, targetWebContents, url)
     }
     // scheme === 'file' はナビゲーションのみブロックし、OSへは委譲しない（実行可能ファイル誤起動等のリスク回避、FR-009, FR-010）
+  })
+
+  targetWebContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) {
+      return
+    }
+    if (isInitialFrameLoad(details.frame?.url)) {
+      return
+    }
+
+    const scheme = classifyUrlScheme(details.url)
+    if (scheme === 'other') {
+      return
+    }
+
+    details.preventDefault()
+
+    if (scheme === 'http') {
+      void openExternalWithConfirmation(win, targetWebContents, details.url)
+    }
   })
 }

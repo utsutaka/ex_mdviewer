@@ -26,7 +26,8 @@ import { resolveFileKind } from '@shared/file-kind'
 import { toStructuredNodeFromJson } from './structured-data/json-adapter'
 import { toStructuredNodeFromXml } from './structured-data/xml-adapter'
 import { renderStructuredTree } from './structured-data/tree-viewer'
-import { renderHtmlDocumentInto } from './html-view/render-html'
+import { injectThemeFallbackStyle, renderHtmlDocumentInto } from './html-view/render-html'
+import { recordHtmlScrollPosition, restoreHtmlScrollPosition } from './html-view/scroll-position'
 import { renderPdfDocumentInto, updatePdfPageIndicator } from './pdf-view/render-pdf'
 import { resolveContainerClassName } from './tab-container'
 import { isRawToggleSupported, renderRawSourceInto } from './raw-source/render-raw'
@@ -41,6 +42,12 @@ export interface TabRuntime {
   displayMode: DisplayMode
   /** raw表示に用いる元テキスト（FR-002, FR-007） */
   rawSourceText: string
+  /**
+   * HTML表示タブが非アクティブ化される直前のiframe内スクロール位置（036-iframe-html-view FR-011）。
+   * fileKind === 'html'以外では常にnull。タブ生成時・再アクティブ化直後もnullのまま扱う
+   * （0スクロール位置との区別のため、data-model.md参照）。
+   */
+  htmlScrollPosition: number | null
 }
 
 /**
@@ -76,6 +83,9 @@ function activateTab(tabId: string): void {
     const previousTab = tabs.get(previousActiveTabId)
     if (previousTab) {
       previousTab.containerEl.classList.remove('is-active')
+      // 036-iframe-html-view: iframeはdetachでcontentWindowが消失するため、
+      // removeChildする直前にスクロール位置を記録する（FR-011、research.md Decision 6）
+      recordHtmlScrollPosition(previousTab)
       if (previousTab.containerEl.parentNode) {
         root.removeChild(previousTab.containerEl)
       }
@@ -98,6 +108,9 @@ function activateTab(tabId: string): void {
     if (tab.fileKind === 'pdf') {
       window.contentApi.notifyPdfTabActiveChanged({ tabId, active: true })
     }
+    if (tab.fileKind === 'html' && tab.htmlScrollPosition !== null) {
+      restoreHtmlScrollPosition(tab)
+    }
     notifyHeadingListUpdated(tab, tab.displayMode !== 'raw')
   }
 }
@@ -114,12 +127,15 @@ function notifyHeadingListUpdated(tab: TabRuntime, interactive: boolean): void {
  * 指定アンカーIDの見出しへスクロールする。TOCクリック（`navigate-to-heading`IPC経由）と
  * 本文内リンク（`href="#..."`）クリックの両方から使う（View分離後、本文内リンクは
  * この関数を直接呼べるがTOCクリックはIPC経由になる、research.md Decision 4注記）。
+ * 第2引数はDocument/HTMLElementいずれも受け付ける（036-iframe-html-view: HTML表示タブでは
+ * 見出しがtab.containerEl直下ではなくiframe.contentDocument側にあるため、呼び出し元
+ * `initNavigateToHeadingListener`でfileKindに応じて検索対象を切り替える）。
  */
-function scrollToHeading(anchorId: string, contentContainerEl: HTMLElement): void {
+function scrollToHeading(anchorId: string, contentRoot: ParentNode): void {
   if (!anchorId) {
     return
   }
-  const target = contentContainerEl.querySelector<HTMLElement>(`#${CSS.escape(anchorId)}`)
+  const target = contentRoot.querySelector<HTMLElement>(`#${CSS.escape(anchorId)}`)
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -187,7 +203,8 @@ function initTabContentCreatedListener(): void {
       headings: [],
       fileKind,
       displayMode: 'rendered',
-      rawSourceText: ''
+      rawSourceText: '',
+      htmlScrollPosition: null
     })
     activateTab(payload.tabId)
     window.contentApi.acknowledgeTabContentCreated(payload.tabId)
@@ -462,6 +479,14 @@ function initNavigateToHeadingListener(): void {
     if (activeTabId !== request.tabId) {
       activateTab(request.tabId)
     }
+    if (tab.fileKind === 'html') {
+      // 036-iframe-html-view: HTML表示タブの見出しはiframe.contentDocument側にある
+      const doc = tab.containerEl.querySelector('iframe')?.contentDocument
+      if (doc) {
+        scrollToHeading(request.anchorId, doc)
+      }
+      return
+    }
     scrollToHeading(request.anchorId, tab.containerEl)
   })
 }
@@ -498,9 +523,18 @@ function initSearchShortcut(): void {
   })
 }
 
-/** Ctrl+マウスホイールによる表示拡大・縮小（50%〜300%、10%刻み、FR-006） */
+/**
+ * Ctrl+マウスホイールによる表示拡大・縮小（50%〜300%、10%刻み、FR-006）。
+ * 036-iframe-html-view: ズーム倍率はmainプロセス側で一元管理する方式へ変更した
+ * （本文View・TOCサイドバーViewの倍率を同期させるため、handlers.ts handleZoomDelta）。
+ * このViewは「Ctrl+ホイールを検知してmainへ送る」「mainから配信された倍率をCSSへ
+ * 適用する」の2役に徹し、倍率の計算ロジック自体は持たない。
+ * HTML表示タブのiframe内で発生したCtrl+ホイールは、ブラウジングコンテキストの境界を
+ * 越えて下のwindow.addEventListener('wheel', ...)には伝播しないため、mainプロセス側
+ * （zoom-changed、handlers.ts attachZoomWheelRelay）が別途検知し、同じhandleZoomDelta経由で
+ * 倍率が更新され、結局この`onZoomUpdated`で受信することになる。
+ */
 function initZoom(): void {
-  let zoomPercent = 100
   const contentRoot = getContentRoot()
 
   window.addEventListener(
@@ -510,12 +544,14 @@ function initZoom(): void {
         return
       }
       event.preventDefault()
-      const step = event.deltaY < 0 ? 10 : -10
-      zoomPercent = Math.min(300, Math.max(50, zoomPercent + step))
-      contentRoot.style.setProperty('zoom', `${zoomPercent}%`)
+      window.contentApi.notifyZoomDelta({ deltaY: event.deltaY })
     },
     { passive: false }
   )
+
+  window.contentApi.onZoomUpdated((payload) => {
+    contentRoot.style.setProperty('zoom', `${payload.zoomPercent}%`)
+  })
 }
 
 function initSettingsResetListener(): void {
@@ -570,6 +606,17 @@ function initThemeAndWidthListeners(): void {
     document.documentElement.classList.remove('theme-light', 'theme-dark')
     document.documentElement.classList.add(`theme-${theme}`)
     applyMermaidTheme(theme === 'dark' ? 'dark' : 'default')
+    // 036-iframe-html-view: アクティブタブがHTML表示の場合、iframe内へ注入済みの
+    // テーマ連動フォールバックstyleを更新する。非アクティブなHTMLタブはdetach済みで
+    // contentDocumentにアクセスできないが、次回アクティブ化時のiframe再読み込みで
+    // 現在のテーマが自然に反映されるため対応不要（render-html.ts getCurrentTheme参照）
+    const activeTab = tabs.get(activeTabId)
+    if (activeTab?.fileKind === 'html') {
+      const doc = activeTab.containerEl.querySelector('iframe')?.contentDocument
+      if (doc) {
+        injectThemeFallbackStyle(doc, theme)
+      }
+    }
   })
   // 033-webcontentsview-search-fix: `initContentWidthMode`（CSS適用のみ、IPC送出なし）を
   // 呼ぶこと。`setContentWidthMode`（IPC送出あり）を呼ぶと、

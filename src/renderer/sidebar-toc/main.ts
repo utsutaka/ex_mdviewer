@@ -485,6 +485,30 @@ function initThemeListener(): void {
 }
 
 /**
+ * 目次バー上でのCtrl+マウスホイールを検知し、本文Viewのズームをトリガーする
+ * （036-iframe-html-view、001-core-viewer FR-006）。目次バー上でズーム操作できない
+ * 不具合（033-webcontentsview-search-fixでUI/本文が4つのWebContentsViewに分離された際、
+ * ズーム機能が本文Viewのみのものになっていた既存の回帰）への対応として追加した。
+ * ズームされるのは本文のみとし、目次バー自体の見た目（文字サイズ・幅）は変化させない
+ * （うつたかさんの実機フィードバック: 「目次バー上でホイールを検出してほしいが、
+ * 目次自体は拡縮しなくてよい」）。そのため、mainプロセスへは`zoom-delta`を送るのみで、
+ * 配信される`zoom-updated`はここでは購読しない（本文Viewのみが購読しCSS適用する）。
+ */
+function initZoom(): void {
+  window.addEventListener(
+    'wheel',
+    (event) => {
+      if (!event.ctrlKey) {
+        return
+      }
+      event.preventDefault()
+      window.sidebarTocApi.notifyZoomDelta({ deltaY: event.deltaY })
+    },
+    { passive: false }
+  )
+}
+
+/**
  * タブ切り替え時、mainプロセスが保持する検索文字列（真実の情報源、
  * ipc/handlers.ts `searchTextByTabId`）を受け取り入力欄へ復元する。
  * 復元した文字列があれば再検索し、件数・ハイライトも自然に復元される。
@@ -547,6 +571,7 @@ async function init(): Promise<void> {
   initMenuTocVisibilityToggleListener()
   initThemeListener()
   initTocResizeHandle()
+  initZoom()
 }
 
 void init()

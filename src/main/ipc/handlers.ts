@@ -29,7 +29,8 @@ import type {
   TocVisibilityChangedRequest,
   TocWidthChangedRequest,
   UnsupportedFilePayload,
-  YamlDocumentGroup
+  YamlDocumentGroup,
+  ZoomDeltaRequest
 } from '@shared/types'
 import { resolveFileKind } from '@shared/file-kind'
 import { decodeFileBuffer } from '../file-encoding'
@@ -43,6 +44,7 @@ import { getAppSettings, setAppSettings } from '../store'
 import {
   closeSearchFloatView,
   confirmCloseLastTab,
+  getActiveTabFileKind,
   getContentView,
   getMainWindow,
   getSearchFloatView,
@@ -461,6 +463,47 @@ function clearSearchOnTabSwitch(newTabId: string): void {
 }
 
 /**
+ * Ctrl+F押下時、TOCサイドバー表示中はTOC内検索へ、非表示中はフロート検索を開く
+ * （既存`029-tab-toc-improvements` FR-011, FR-012の判定をmainプロセス側に集約し、
+ * 本文View・タブバーViewいずれからのCtrl+Fでも同じ判定結果になるようにする）。
+ * IPC（`request-search-focus`）と`before-input-event`（036-iframe-html-view、
+ * HTML表示のiframe内でのCtrl+F検知）の両方から呼ばれる共通ロジック。
+ */
+function handleSearchFocusRequest(): void {
+  const win = getMainWindow()
+  if (!win) {
+    return
+  }
+  // 034-toc-filekind-scope: tocVisible設定単独ではなく、実際にTOCサイドバーが
+  // 表示されているか（fileKind判定込み）で分岐する。そうしないとPDF等の表示中に
+  // 幅0で不可視のTOC内検索へフォーカスしようとしてCtrl+Fが機能しなくなる。
+  if (isTocSidebarVisible()) {
+    const view = getSidebarTocView()
+    // rendererからのinputEl.focus()はDOM上のフォーカスに過ぎず、OSレベルで
+    // このView自体がキーボードフォーカスを持っていないと実際の入力は届かない
+    view?.webContents.focus()
+    view?.webContents.send('focus-sidebar-search')
+  } else {
+    openSearchFloatView(win)
+  }
+}
+
+/**
+ * F3/Shift+F3による次/前候補移動を、フォーカス位置に関わらずどのViewからでも
+ * 受け付ける（実機フィードバック対応）。現在アクティブなタブの検索文字列
+ * （`searchTextByTabId`）を用いて`findNext: false`（既存セッションの続行）で検索する。
+ * 検索文字列が空（一度も検索していない）の場合は何もしない。
+ * IPC（`request-find-next`）と`before-input-event`（036-iframe-html-view）の両方から呼ばれる。
+ */
+function handleFindNextRequest(forward: boolean): void {
+  const text = currentActiveTabId !== null ? (searchTextByTabId.get(currentActiveTabId) ?? '') : ''
+  if (!text) {
+    return
+  }
+  getContentView()?.webContents.findInPage(text, { forward, findNext: false })
+}
+
+/**
  * 本文Viewへのフォーカス強制復帰（FR-004・FR-005の実現手段）。`searchInUse`が`true`の間のみ
  * 本文Viewの`focus`イベントで`activeSearchView`が指すViewへフォーカスを戻す（FR-011）。
  * リスナー自体は一度だけ登録し、内部で`searchInUse`を見て有効/無効を切り替える。
@@ -483,6 +526,87 @@ function attachContentFocusForceback(): void {
 }
 
 /**
+ * 本文ViewのwebContents全体（メインフレーム・サブフレーム双方）のキーボード入力を
+ * `before-input-event`で捕捉し、Ctrl+F・F3・Shift+F3を検知する（036-iframe-html-view）。
+ * HTML表示タブのiframe内で発生したキー入力は、renderer側の`window.addEventListener('keydown',
+ * ...)`（`initSearchShortcut`）ではブラウジングコンテキストの境界を越えて伝播しないため
+ * 検知できない。`before-input-event`はwebContents配下の全フレームを横断して捕捉できる
+ * Electron側のAPIのため、この制約を受けない（実機フィードバック対応）。
+ * Markdown等（iframeを使わない既存fileKind）ではrenderer側の`initSearchShortcut`と
+ * 重複して発火しうるが、いずれも同一の`handleSearchFocusRequest`/`handleFindNextRequest`を
+ * 呼ぶだけの冪等な処理のため実害はない。
+ */
+function attachSearchShortcutFromContent(): void {
+  const content = getContentView()
+  if (!content) {
+    return
+  }
+  content.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') {
+      return
+    }
+    if (input.control && input.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      handleSearchFocusRequest()
+    } else if (input.key === 'F3') {
+      event.preventDefault()
+      handleFindNextRequest(!input.shift)
+    }
+  })
+}
+
+/**
+ * 現在のズーム倍率（%）。mainプロセス側で一元管理し、本文View・TOCサイドバーViewの
+ * 倍率を同期させる（036-iframe-html-view、001-core-viewer FR-006）。アプリ再起動時には
+ * 永続化されず既定倍率（100%）に戻る（001-core-viewer Assumptions踏襲）。
+ */
+let zoomPercent = 100
+
+/**
+ * Ctrl+マウスホイール1回分のdeltaYからズーム倍率を再計算し、本文Viewへzoom-updatedで
+ * 配信する（50%〜300%、10%刻み、001-core-viewer FR-006）。ズームされるのは本文のみとし、
+ * TOCサイドバー等UI側の見た目は変化させない（うつたかさんの実機フィードバック）。
+ * 各Viewのzoom-delta IPC・mainプロセス側のzoom-changed検知（下記attachZoomWheelRelay）
+ * の両方から呼ばれる共通ロジック。
+ */
+function handleZoomDelta(deltaY: number): void {
+  const step = deltaY < 0 ? 10 : -10
+  zoomPercent = Math.min(300, Math.max(50, zoomPercent + step))
+  getContentView()?.webContents.send('zoom-updated', { zoomPercent })
+}
+
+/**
+ * 本文ViewでのCtrl+マウスホイール操作を検知する（036-iframe-html-view）。
+ *
+ * 実装時判明: `before-mouse-event`（webContents配下の全フレームを横断して捕捉できる
+ * はずのElectron側API）は、実機検証の結果`mouseWheel`タイプのイベントを一切捕捉できない
+ * ことが判明した（`mouseMove`/`mouseLeave`等は捕捉できるが、ホイール操作のみ対象外という
+ * Electronの実装上の制約）。代わりに`zoom-changed`イベント（Ctrl+ホイールによるネイティブ
+ * ズーム操作の意図が通知される、`in`/`out`の方向のみを含む）が、iframe内で発生した
+ * ホイール操作に対しても正しく発火することを確認した。これを使ってCtrl+ホイールを検知する。
+ *
+ * `zoom-changed`はメインフレーム・iframe双方のホイール操作で発火するため、Markdown等
+ * （iframeを使わないfileKind）ではrenderer側の既存`window.addEventListener('wheel', ...)`
+ * （`initZoom`、`zoom-delta`IPC経由で`handleZoomDelta`を呼ぶ）と同時に発火し二重処理に
+ * なってしまう。これを避けるため、アクティブタブがHTML表示（iframeを使う）の場合のみ
+ * ここから`handleZoomDelta`を呼ぶ（`getActiveTabFileKind()`で判定）。`zoomDirection`は
+ * `in`/`out`のみで具体的な量を持たないため、1ステップ分の`deltaY`相当値
+ * （負値で拡大・正値で縮小）に変換する。
+ */
+function attachZoomWheelRelay(): void {
+  const content = getContentView()
+  if (!content) {
+    return
+  }
+  content.webContents.on('zoom-changed', (_event, zoomDirection) => {
+    if (getActiveTabFileKind() !== 'html') {
+      return
+    }
+    handleZoomDelta(zoomDirection === 'in' ? -1 : 1)
+  })
+}
+
+/**
  * webContentsの`found-in-page`イベントを`find-in-page-result`として、直近に検索操作を
  * 行ったView（TOCサイドバーView or フロート検索View）へ中継する（FR-002）。
  * ウィンドウ生成後に一度だけ呼び出す。
@@ -497,6 +621,8 @@ export function setupFoundInPageRelay(): void {
     getActiveSearchWebContentsView()?.webContents.send('find-in-page-result', payload)
   })
   attachContentFocusForceback()
+  attachSearchShortcutFromContent()
+  attachZoomWheelRelay()
 }
 
 let handlersRegistered = false
@@ -609,42 +735,22 @@ export function registerIpcHandlers(): void {
     getContentView()?.webContents.focus()
   })
 
-  /**
-   * Ctrl+F押下時、TOCサイドバー表示中はTOC内検索へ、非表示中はフロート検索を開く
-   * （既存`029-tab-toc-improvements` FR-011, FR-012の判定をmainプロセス側に集約し、
-   * 本文View・タブバーViewいずれからのCtrl+Fでも同じ判定結果になるようにする）。
-   */
   ipcMain.on('request-search-focus', () => {
-    const win = getMainWindow()
-    if (!win) {
-      return
-    }
-    // 034-toc-filekind-scope: tocVisible設定単独ではなく、実際にTOCサイドバーが
-    // 表示されているか（fileKind判定込み）で分岐する。そうしないとPDF等の表示中に
-    // 幅0で不可視のTOC内検索へフォーカスしようとしてCtrl+Fが機能しなくなる。
-    if (isTocSidebarVisible()) {
-      const view = getSidebarTocView()
-      // rendererからのinputEl.focus()はDOM上のフォーカスに過ぎず、OSレベルで
-      // このView自体がキーボードフォーカスを持っていないと実際の入力は届かない
-      view?.webContents.focus()
-      view?.webContents.send('focus-sidebar-search')
-    } else {
-      openSearchFloatView(win)
-    }
+    handleSearchFocusRequest()
+  })
+
+  ipcMain.on('request-find-next', (_event, request: RequestFindNextRequest) => {
+    handleFindNextRequest(request.forward)
   })
 
   /**
-   * F3/Shift+F3による次/前候補移動を、フォーカス位置に関わらずどのViewからでも
-   * 受け付ける（実機フィードバック対応）。現在アクティブなタブの検索文字列
-   * （`searchTextByTabId`）を用いて`findNext: false`（既存セッションの続行）で検索する。
-   * 検索文字列が空（一度も検索していない）の場合は何もしない。
+   * 本文View・TOCサイドバーViewそれぞれのrenderer側`window.addEventListener('wheel', ...)`
+   * が検知したCtrl+ホイールの通知（036-iframe-html-view、001-core-viewer FR-006）。
+   * ズーム倍率はmainプロセス側で一元管理し、全Viewへ同じ倍率を配信することで、
+   * 本文とTOCサイドバーの見た目のズーム倍率を同期させる。
    */
-  ipcMain.on('request-find-next', (_event, request: RequestFindNextRequest) => {
-    const text = currentActiveTabId !== null ? (searchTextByTabId.get(currentActiveTabId) ?? '') : ''
-    if (!text) {
-      return
-    }
-    getContentView()?.webContents.findInPage(text, { forward: request.forward, findNext: false })
+  ipcMain.on('zoom-delta', (_event, request: ZoomDeltaRequest) => {
+    handleZoomDelta(request.deltaY)
   })
 
   ipcMain.handle('get-app-settings', () => getAppSettings())

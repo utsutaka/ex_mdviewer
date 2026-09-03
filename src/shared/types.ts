@@ -225,6 +225,29 @@ export interface FindInPageResultPayload {
   matches: number
 }
 
+// ---- Ctrl+マウスホイールズーム（036-iframe-html-view、001-core-viewer FR-006） ----
+
+/**
+ * 各ViewでCtrl+マウスホイールが検知されたことの通知（renderer → main）。
+ * ズーム倍率はmainプロセス側で一元管理し、`ZoomUpdatedPayload`で全Viewへ配信する
+ * （本文View・TOCサイドバーViewの倍率を同期させるため）。
+ */
+export interface ZoomDeltaRequest {
+  deltaY: number
+}
+
+/**
+ * 現在のズーム倍率（%、50〜300、10刻み）の通知（main → renderer、全View共通配信）。
+ * HTML表示タブのiframe内で発生したホイール操作は、renderer側の
+ * `window.addEventListener('wheel', ...)`ではブラウジングコンテキストの境界を越えて
+ * 伝播しないため、mainプロセス側の`zoom-changed`（Ctrl+ホイールによるネイティブズーム
+ * 操作の意図を通知するElectron側API、iframe内のホイール操作でも発火することを実機確認済み）
+ * で検知した場合も、同じ経路でzoomPercentを計算し配信する。
+ */
+export interface ZoomUpdatedPayload {
+  zoomPercent: number
+}
+
 // ---- PDFページ位置表示（011-html-pdf-viewer FR-017, FR-018） ----
 
 /** PDFページ番号ポーリング結果の通知ペイロード（main → renderer） */

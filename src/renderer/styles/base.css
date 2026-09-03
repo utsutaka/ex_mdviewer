@@ -53,9 +53,21 @@ body {
     height: 100vh;
 }
 
+/*
+ * 036-iframe-html-view実装時判明: `flex: 0 0 auto`（033以前、単一webContents時代に
+ * #appのcolumnコンテナ内で「高さ固定・幅は親いっぱい」を意味していた指定）は削除した。
+ * 033-webcontentsview-search-fixでタブバーが独立View化された後、tab-bar/index.htmlの
+ * インラインstyleが同じクラス名`.tab-bar-wrapper`に対して逆の意図（横並びflexコンテナ内で
+ * `flex: 1 1 auto; min-width: 0`によりタブ本数分の幅へ広がらないようにする、
+ * 962420f「タブバー横スクロールボタンが表示されない不具合を修正」参照）で再利用しており、
+ * 本番ビルド時にViteがCSS読み込み順序を並べ替える（インライン<style>を<head>先頭へ、
+ * 外部stylesheetを後方へ移動する）ことで、この`flex: 0 0 auto`が962420fの修正を上書きし、
+ * タブが多い場合に横スクロールボタンが再び表示されなくなる不具合が実機で確認された。
+ * position/border-bottom/backgroundはtab-bar/index.html側で指定していない見た目のスタイルの
+ * ため引き続きここで維持する。
+ */
 .tab-bar-wrapper {
     position: relative;
-    flex: 0 0 auto;
     display: flex;
     border-bottom: 1px solid var(--border-color);
     background: var(--panel-bg);

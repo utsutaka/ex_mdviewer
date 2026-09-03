@@ -6,7 +6,8 @@ import type {
   NavigateToHeadingRequest,
   RestoreSearchTextPayload,
   SearchClearedPayload,
-  Theme
+  Theme,
+  ZoomDeltaRequest
 } from '@shared/types'
 
 /** TOCサイドバーView向けAPI */
@@ -40,6 +41,9 @@ const api = {
   },
   requestFindNext(forward: boolean): void {
     ipcRenderer.send('request-find-next', { forward })
+  },
+  notifyZoomDelta(payload: ZoomDeltaRequest): void {
+    ipcRenderer.send('zoom-delta', payload)
   },
 
   onFindInPageResult(callback: (payload: FindInPageResultPayload) => void): () => void {

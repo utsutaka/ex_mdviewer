@@ -13,6 +13,11 @@ import { getAppSettings, updateWindowState } from './store'
  * PDF表示（Chromium内蔵PDFビューア）のために必要な許可（011-html-pdf-viewer FR-005〜FR-006）。
  * いずれも外部ネットワーク通信を伴わないローカル/内部プロトコル限定の許可であり、
  * chrome://resourcesは完全一致に限定しワイルドカードは使用しない（research.md Decision 2）。
+ * frame-srcのhttp: https:は、036-iframe-html-view（HTML表示のiframe化）でHTML内の
+ * httpsリンククリックをwill-frame-navigateイベントで検知するために追加した許可。
+ * ナビゲーション遷移自体は即座にevent.preventDefault()でブロックされ、外部ブラウザでの
+ * 閲覧は既存の確認ダイアログ経由でshell.openExternalへ委譲する構成（008-fix-external-link-nav）
+ * を維持するため、mdviewer自体が外部通信を行うことにはならない（036 research.md Decision 2）。
  */
 const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
@@ -23,7 +28,7 @@ const CONTENT_SECURITY_POLICY = [
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
-  "frame-src 'self' file:"
+  "frame-src 'self' file: http: https:"
 ].join('; ')
 
 export function applyContentSecurityPolicy(): void {
@@ -85,6 +90,16 @@ let activeTabFileKind: FileKind | null = null
 /** アクティブタブのファイル種別を更新する（034-toc-filekind-scope、呼び出し後は`relayoutViews`の再実行が必要） */
 export function setActiveTabFileKind(fileKind: FileKind | null): void {
   activeTabFileKind = fileKind
+}
+
+/**
+ * アクティブタブのファイル種別を取得する（036-iframe-html-view）。
+ * `zoom-changed`イベント経由のCtrl+ホイールズーム中継が、HTML表示タブ（iframe）でのみ
+ * 発火するように判定する用途で使う（Markdown等はrenderer側の既存wheelイベント
+ * リスナーが機能するため、二重処理を避ける必要がある）。
+ */
+export function getActiveTabFileKind(): FileKind | null {
+  return activeTabFileKind
 }
 
 export function getTabBarView(): WebContentsView | null {

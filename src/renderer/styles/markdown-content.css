@@ -15,12 +15,33 @@
 }
 
 /*
- * HTML内のCSSが position: fixed/absolute/sticky でタブバー等アプリ全体のUIを
- * 覆い隠すことを防ぐため、document-pane--html自身をそれら要素の新しい包含ブロックとして
- * 確立する（016-fix-html-ui-hijack FR-001, FR-002, research.md Decision 1）。
+ * HTML表示はiframeで別ブラウジングコンテキストとして隔離するため（036-iframe-html-view）、
+ * Markdown用のテキストレイアウト（.document-paneのpadding/max-width）を打ち消し、
+ * pdf-pane__frame（pdf-view.css）と同様にタブ領域いっぱいにiframeを表示する。
+ * iframeの構造上position: fixed等によるUI乗っ取りは自然に封じ込められるため、
+ * 016-fix-html-ui-hijackが導入したcontain: paintは不要になり削除した（research.md Decision 10）。
  */
 .document-pane--html {
-    contain: paint;
+    padding: 0;
+    max-width: none;
+    height: 100%;
+}
+
+.document-pane__html-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+/*
+ * .content-width-full .document-pane（詳細度2クラス）がmax-width: 1200pxを設定するため、
+ * 詳細度1クラスの.document-pane--htmlのmax-width: noneだけでは打ち消せない。
+ * 同じ詳細度で明示的に上書きする（013-content-width-toggleはMarkdown表示向けの機能であり、
+ * iframeで独立してレイアウトされるHTML表示には適用しない）。
+ */
+.content-width-full .document-pane--html {
+    max-width: none;
 }
 
 .document-pane__loading {
@@ -77,9 +98,15 @@
 }
 
 /*
- * pre/codeのbackgroundのみ、Markdown表示（document-pane--htmlクラスなし）に限定する。
- * HTML表示側は@layer html-view-fallback（下記）でテーマ連動フォールバックを提供し、
- * HTMLファイル自身のstyle指定があれば常にそちらを優先させる（015-fix-html-codeblock-bg FR-001, FR-004）。
+ * pre/codeのbackground。036-iframe-html-viewによりHTML表示はiframeへ分離されたため、
+ * mdviewer本体のCSSはHTML自身のDOM（iframe内document）に一切適用されなくなった。
+ * :not(.document-pane--html)による除外は実質的に不要になったが、
+ * document-pane--html配下（iframe要素自身、pre/code要素は存在しない）には元々マッチしない
+ * セレクタのため、変更を最小限にする目的で除外条件はそのまま残す。
+ * HTML表示側のテーマ連動フォールバックは、iframe内へ動的に注入する方式へ移行した
+ * （render-html.ts buildThemeFallbackCss/injectThemeFallbackStyle、
+ * 036-iframe-html-view research.md Decision 5）。旧@layer html-view-fallbackブロック
+ * （015-fix-html-codeblock-bgが本体CSS側に持っていたもの）は削除した。
  */
 .document-pane:not(.document-pane--html) pre {
     background: var(--panel-bg);
@@ -91,28 +118,6 @@
 
 .document-pane:not(.document-pane--html) pre code {
     background: none;
-}
-
-/*
- * HTML表示専用のテーマ連動フォールバック配色（015-fix-html-codeblock-bg FR-001, FR-002, FR-005, FR-007）。
- * @layerで宣言されたスタイルは、HTMLファイル由来の@layerを伴わない<style>より必ず優先度が低くなるため、
- * HTML側がpre/codeの配色を指定していれば常にそちらが勝ち、未指定時のみこのフォールバックが適用される。
- * pre内codeも同様の優先順位により、code自身に指定があればそれが勝ち、なければ透明（pre側の背景を見せる）になる。
- */
-@layer html-view-fallback {
-    .document-pane--html pre {
-        background: var(--panel-bg);
-        color: var(--fg-color);
-    }
-
-    .document-pane--html code {
-        background: var(--panel-bg);
-        color: var(--fg-color);
-    }
-
-    .document-pane--html pre code {
-        background: none;
-    }
 }
 
 .document-pane table {
