@@ -10,6 +10,9 @@ import { appVersion } from './app-version'
  * Decision 4）。通常の「ファイルを開く...」項目・フォルダ履歴の各項目のいずれからも、
  * `defaultPath`だけを変えて呼び出される。フォルダ履歴への記録自体はここでは行わず、
  * 実際にファイルが選択され`handleOpenFile()`が呼ばれた時点で行われる（research.md Decision 5）。
+ * 037-open-dialog-multiselect: 複数選択にも対応し、選択された全ファイルをそれぞれ
+ * `handleOpenFile()`へ渡す。ドラッグ&ドロップ側（initDragAndDrop）と同じく呼び出し間で
+ * awaitによる直列待機は行わない（research.md Decision 2）。
  */
 async function openFileDialogAt(defaultPath?: string): Promise<void> {
   const win = getMainWindow()
@@ -19,7 +22,7 @@ async function openFileDialogAt(defaultPath?: string): Promise<void> {
   try {
     const result = await dialog.showOpenDialog(win, {
       defaultPath,
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [
         {
           name: '対応ファイル',
@@ -36,7 +39,9 @@ async function openFileDialogAt(defaultPath?: string): Promise<void> {
     if (result.canceled || result.filePaths.length === 0) {
       return
     }
-    void handleOpenFile(result.filePaths[0])
+    for (const filePath of result.filePaths) {
+      void handleOpenFile(filePath)
+    }
   } catch {
     const payload: OpenFileDialogErrorPayload = {
       message: 'ファイルを開くダイアログの表示に失敗しました'
