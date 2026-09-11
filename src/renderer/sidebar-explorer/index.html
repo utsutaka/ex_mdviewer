@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>mdviewer - エクスプローラー</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <link rel="stylesheet" href="../styles/components.css" />
+    <style>
+      /* 038-explorer-sidebar: sidebar-toc/index.htmlと同じ理由により、View単体のbody直下では
+         base.css/.sidebar-explorerのサイズ指定（flex-basis等）は前提としない（research.md
+         Decision 9: base.css側には競合するflexサイズ指定を一切持たせない設計のため、
+         このインライン指定がView全体を埋める唯一のflexサイズ指定になる）。 */
+      body {
+        display: flex;
+        flex-direction: row;
+        height: 100vh;
+      }
+      .sidebar-explorer {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sidebar-explorer" aria-label="エクスプローラー">
+      <div class="sidebar-explorer__header">
+        <span class="sidebar-explorer__title">エクスプローラー</span>
+        <button
+          type="button"
+          id="sidebar-explorer-close"
+          class="sidebar-explorer__close"
+          aria-label="エクスプローラーを非表示"
+        >
+          &times;
+        </button>
+      </div>
+      <div id="sidebar-explorer-list" class="sidebar-explorer__list" role="tree" aria-label="ファイル一覧"></div>
+    </div>
+    <div
+      id="explorer-resize-handle"
+      class="explorer-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="エクスプローラーの幅を変更"
+    ></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -7,11 +7,11 @@
     <link rel="stylesheet" href="../styles/base.css" />
     <link rel="stylesheet" href="../styles/components.css" />
     <style>
-      /* 033-webcontentsview-search-fix: base.css/.sidebar-tocのflexスタイルは既存の
-         .workspace（flexコンテナ）の子要素であることを前提にしているため、
-         View単体のbody直下ではflex: 0 0 var(--toc-width)が効かない。
-         Viewのboundsはmainプロセス側で既にTOC幅ぴったりに設定されるため、
-         ここではView全体（body）を埋めるだけでよい。 */
+      /* 033-webcontentsview-search-fix: View単体のbody直下では.workspace（flexコンテナ）を
+         前提にしたflex-basis指定は不要・不整合になる。Viewのboundsはmainプロセス側で
+         既にTOC幅ぴったりに設定されるため、ここではView全体（body）を埋めるだけでよい
+         （038-explorer-sidebar実機フィードバック対応でbase.css側のflex-basis指定自体を
+         削除済み、詳細はbase.css `.sidebar-toc`のコメント参照）。 */
       body {
         display: flex;
         flex-direction: row;
@@ -25,11 +25,21 @@
     </style>
   </head>
   <body>
+    <!--
+      038-explorer-sidebar: 目次バーがウィンドウ右端へ移動したため、本文との境界は
+      目次バーの左端になる。境界線（リサイズハンドル）もnavより前（左側）へ配置する
+      （実機フィードバック対応: ハンドルがView右端＝ウィンドウ右端に取り残され、
+      実際に見える境界線上でドラッグしてもリサイズできない不具合があったため）。
+    -->
+    <div id="toc-resize-handle" class="toc-resize-handle" role="separator" aria-orientation="vertical" aria-label="目次の幅を変更"></div>
     <nav id="sidebar-toc" class="sidebar-toc" aria-label="目次">
+      <div class="sidebar-toc__header">
+        <span class="sidebar-toc__title">目次</span>
+        <button type="button" id="sidebar-toc-close" class="sidebar-toc__close" aria-label="目次を非表示">&times;</button>
+      </div>
       <div id="sidebar-toc-search" class="sidebar-toc-search"></div>
       <div id="sidebar-toc-list" class="sidebar-toc-list"></div>
     </nav>
-    <div id="toc-resize-handle" class="toc-resize-handle" role="separator" aria-orientation="vertical" aria-label="目次の幅を変更"></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

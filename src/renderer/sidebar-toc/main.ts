@@ -178,26 +178,58 @@ function clampTocWidth(width: number): number {
   return Math.min(TOC_WIDTH_MAX, Math.max(TOC_WIDTH_MIN, width))
 }
 
-function applyTocWidth(width: number): void {
-  document.documentElement.style.setProperty('--toc-width', `${width}px`)
-}
-
 let tocWidth = TOC_WIDTH_DEFAULT
 
+/**
+ * ドラッグ確定・ダブルクリックリセット時の幅変更。永続化を伴う（FR-011〜FR-013と同型）。
+ * 038-explorer-sidebar実機フィードバック対応: 以前はここで`--toc-width`というCSS変数を
+ * `documentElement`に設定していたが、この変数は`base.css`の`.sidebar-toc { flex: 0 0
+ * var(--toc-width, 220px) }`でのみ参照されていた。目次バーの実際の画面上の幅はmainプロセスの
+ * `relayoutViews`が`setBounds`で決めており、View自身のbody直下では`sidebar-toc/index.html`の
+ * インラインstyle（`flex: 1 1 auto; width: auto`）がView全体を埋める設計のため、この
+ * CSS変数によるflex-basis指定は本来常に無効なはずだった。ところが本番ビルドではViteが
+ * `<style>`タグをCSS読み込み順序の先頭へ並べ替えるため、この指定が本番限定で復活し、
+ * View bounds（実サイズ）とは無関係にパネル内部のflex-basisだけをドラッグ中に変化させてしまい、
+ * 「表示が追い付かない・空白ができる」不具合の原因になっていた（fb3bb88と同型のCSS読み込み順序
+ * 不具合クラス、research.md Decision 9）。CSS変数とその参照ルール自体を削除し、以後は
+ * View boundsの更新（IPC経由のプレビュー・確定）のみで幅を表現する。
+ */
 function setTocWidth(width: number): void {
   tocWidth = clampTocWidth(width)
-  applyTocWidth(tocWidth)
   window.sidebarTocApi.tocWidthChanged(tocWidth)
 }
 
+/** 起動時の幅反映。IPC送出は行わない */
 function initTocWidth(initialWidth: number): void {
   tocWidth = clampTocWidth(initialWidth)
-  applyTocWidth(tocWidth)
 }
 
 /**
  * リサイズハンドルへのドラッグ操作（Pointer Events）とダブルクリックによる既定幅リセットを配線する
  * （FR-002, FR-007, FR-008、research.md Decision 1, 3, 6）。
+ *
+ * 038-explorer-sidebar実機フィードバック対応: 目次バーがウィンドウ右端へ移動したことに伴い、
+ * ドラッグ方向と幅の増減の符号を反転させた。目次バーが左端にあった時代は「境界線を右へ
+ * ドラッグ＝幅が増える」だったが、右端へ移動した後は「境界線を左へドラッグ＝幅が増える」
+ * が直感的な挙動になる（境界線は今や目次バーの左端＝本文との境界）。
+ *
+ * さらに、真のリアルタイム視覚追従のため`sidebar-explorer/main.ts`の
+ * `initExplorerResizeHandle`と同じ二段階方式へ変更した。`pointermove`ごとに
+ * `requestAnimationFrame`で間引きつつ、永続化を伴わない`tocWidthPreview`を送信して
+ * mainプロセス側の`relayoutViews`（View自体のsetBounds）を都度呼び出させる。
+ * 確定・永続化（`tocWidthChanged`）は`pointerup`でのみ送信する。
+ *
+ * 038-explorer-sidebar実機フィードバック対応: ドラッグ量の計算には`event.clientX`
+ * （このViewのビューポート左端からの相対座標）ではなく`event.screenX`（デスクトップ全体の
+ * 絶対座標）を使う。目次バーはウィンドウ右端にあり、幅が変わるたびにView自体のX座標
+ * （画面上の左端位置）が移動する（`x: explorerWidth + contentWidth`、`main/window.ts`
+ * `relayoutViews`参照）。`clientX`はそのView自身の左端を原点とする相対座標のため、
+ * ドラッグ中にView自体が動くと同じ物理カーソル位置でも`clientX`の値がフレームごとに
+ * ズレてしまい、「実際には動いていないのに次のプレビュー幅がさらに変化する」という
+ * フィードバックループが生じ、内容が小刻みに振動して見える不具合（うつたかさんの
+ * 実機報告「動かしている間目次バーの中身が震えている」）の原因になっていた。
+ * エクスプローラーバーはX座標が常に0固定（左端に張り付いたまま幅だけが伸びる）のため
+ * この問題が起きず、`clientX`のままで問題ない。
  */
 function initTocResizeHandle(): void {
   const handle = document.getElementById('toc-resize-handle')
@@ -207,6 +239,17 @@ function initTocResizeHandle(): void {
 
   let dragStartX = 0
   let dragStartWidth = TOC_WIDTH_DEFAULT
+  let previewFrame: number | null = null
+  let pendingPreviewWidth: number | null = null
+
+  const flushPreview = (): void => {
+    previewFrame = null
+    if (pendingPreviewWidth === null) {
+      return
+    }
+    window.sidebarTocApi.tocWidthPreview(pendingPreviewWidth)
+    pendingPreviewWidth = null
+  }
 
   handle.addEventListener('pointerdown', (event) => {
     if (!getTocVisible()) {
@@ -214,7 +257,7 @@ function initTocResizeHandle(): void {
     }
     handle.setPointerCapture(event.pointerId)
     handle.classList.add('is-dragging')
-    dragStartX = event.clientX
+    dragStartX = event.screenX
     dragStartWidth = tocWidth
   })
 
@@ -222,7 +265,10 @@ function initTocResizeHandle(): void {
     if (!handle.hasPointerCapture(event.pointerId)) {
       return
     }
-    applyTocWidth(clampTocWidth(dragStartWidth + (event.clientX - dragStartX)))
+    pendingPreviewWidth = clampTocWidth(dragStartWidth - (event.screenX - dragStartX))
+    if (previewFrame === null) {
+      previewFrame = requestAnimationFrame(flushPreview)
+    }
   })
 
   handle.addEventListener('pointerup', (event) => {
@@ -231,7 +277,12 @@ function initTocResizeHandle(): void {
     }
     handle.releasePointerCapture(event.pointerId)
     handle.classList.remove('is-dragging')
-    setTocWidth(dragStartWidth + (event.clientX - dragStartX))
+    if (previewFrame !== null) {
+      cancelAnimationFrame(previewFrame)
+      previewFrame = null
+      pendingPreviewWidth = null
+    }
+    setTocWidth(dragStartWidth - (event.screenX - dragStartX))
   })
 
   handle.addEventListener('dblclick', () => {
@@ -477,6 +528,18 @@ function initMenuTocVisibilityToggleListener(): void {
   })
 }
 
+/**
+ * 目次バー右上の×ボタン（038-explorer-sidebar FR-009）。新規IPCチャネルは追加せず、
+ * メニュー項目のクリックと同じ`setTocVisible`をそのまま呼び出す（両者は同一の
+ * 永続フラグ・同一の関数経路を共有する）。
+ */
+function initTocCloseButton(): void {
+  const button = document.getElementById('sidebar-toc-close')
+  button?.addEventListener('click', () => {
+    setTocVisible(!getTocVisible())
+  })
+}
+
 function initThemeListener(): void {
   window.sidebarTocApi.onThemeUpdated((theme) => {
     document.documentElement.classList.remove('theme-light', 'theme-dark')
@@ -569,6 +632,7 @@ async function init(): Promise<void> {
   initSearchClearedListener()
   initRestoreSearchTextListener()
   initMenuTocVisibilityToggleListener()
+  initTocCloseButton()
   initThemeListener()
   initTocResizeHandle()
   initZoom()

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import type {
   ActivateTabContentPayload,
@@ -8,10 +8,15 @@ import type {
   CloseTabResponse,
   ContentWidthModeChangedRequest,
   DisplayModeChangedPayload,
+  ExplorerOpenFileRequest,
+  ExplorerVisibilityChangedRequest,
+  ExplorerWidthChangedRequest,
+  ExplorerWidthPreviewRequest,
   FileOpenedPayload,
   FindInPageRequest,
   FindInPageResultPayload,
   FocusTabPayload,
+  FolderListUpdatedPayload,
   HeadingListUpdatedPayload,
   NavigateToHeadingRequest,
   OpenFileRequest,
@@ -28,11 +33,13 @@ import type {
   ToggleDisplayModeRequest,
   TocVisibilityChangedRequest,
   TocWidthChangedRequest,
+  TocWidthPreviewRequest,
   UnsupportedFilePayload,
   YamlDocumentGroup,
   ZoomDeltaRequest
 } from '@shared/types'
 import { resolveFileKind } from '@shared/file-kind'
+import { buildExplorerEntries } from '../explorer-listing'
 import { decodeFileBuffer } from '../file-encoding'
 import { yamlToStructuredNodes } from '../yaml-adapter'
 import { unwatchFile, watchFile } from '../file-watcher'
@@ -48,6 +55,7 @@ import {
   getContentView,
   getMainWindow,
   getSearchFloatView,
+  getSidebarExplorerView,
   getSidebarTocView,
   getTabBarView,
   isSearchFloatVisible,
@@ -104,6 +112,45 @@ function findExistingTabByPath(filePath: string): TabRuntimeState | undefined {
 }
 
 /**
+ * 現在アクティブなタブのファイルが置かれているフォルダ直下の一覧を計算し、
+ * エクスプローラーサイドバーViewへ`folder-list-updated`を送信する（038-explorer-sidebar
+ * FR-001, FR-004, FR-019、contracts/ipc-contract-delta.md）。
+ * アクティブなタブが存在しない場合、フォルダにアクセスできない場合はいずれも
+ * `{folderPath: null, entries: []}`を送信する（rendererが空状態メッセージを表示する、
+ * spec.md Edge Cases）。フォルダ自体の変化有無に関わらず、この関数を呼ぶタイミングでは
+ * 常に一覧を再計算する（3状態表示はアクティブタブが変わるだけでも変化しうるため）。
+ */
+async function computeAndSendFolderList(): Promise<void> {
+  const view = getSidebarExplorerView()
+  if (!view) {
+    return
+  }
+  const activeTab = currentActiveTabId !== null ? openTabs.get(currentActiveTabId) : undefined
+  if (!activeTab) {
+    const payload: FolderListUpdatedPayload = { folderPath: null, entries: [] }
+    view.webContents.send('folder-list-updated', payload)
+    return
+  }
+  const dirPath = dirname(activeTab.filePath)
+  const openFilePaths = Array.from(openTabs.values()).map((tab) => tab.filePath)
+  try {
+    const dirents = await readdir(dirPath, { withFileTypes: true })
+    const entries = buildExplorerEntries(
+      dirPath,
+      dirents.map((dirent) => ({ name: dirent.name, isFile: dirent.isFile() })),
+      activeTab.filePath,
+      openFilePaths
+    )
+    const payload: FolderListUpdatedPayload = { folderPath: dirPath, entries }
+    view.webContents.send('folder-list-updated', payload)
+  } catch {
+    // フォルダにアクセスできない場合もエラーダイアログ等は表示しない（spec.md Edge Cases、constitution原則V）
+    const payload: FolderListUpdatedPayload = { folderPath: null, entries: [] }
+    view.webContents.send('folder-list-updated', payload)
+  }
+}
+
+/**
  * ファイルを開く要求を処理する（FR-001, FR-017, FR-034, FR-039）。
  * コンテンツ読み込みの完了を待たずtab-createdを即座に送出し、
  * 複数要求はawaitで直列化しないことで互いをブロックしない（FR-034）。
@@ -148,6 +195,7 @@ export async function handleOpenFile(filePath: string): Promise<void> {
     setActiveTabFileKind(resolveFileKind(existing.filePath))
     relayoutViews(win)
     syncSearchUiWithTocVisibility(win)
+    void computeAndSendFolderList()
     return
   }
 
@@ -160,6 +208,7 @@ export async function handleOpenFile(filePath: string): Promise<void> {
   setActiveTabFileKind(fileKind)
   relayoutViews(win)
   syncSearchUiWithTocVisibility(win)
+  void computeAndSendFolderList()
 
   const title = basename(filePath)
   const tabCreated: TabCreatedPayload = { tabId, filePath, title }
@@ -242,6 +291,7 @@ function removeTabRuntimeState(tabId: string, tab: TabRuntimeState): void {
       relayoutViews(win)
       syncSearchUiWithTocVisibility(win)
     }
+    void computeAndSendFolderList()
   }
 }
 
@@ -640,6 +690,11 @@ export function registerIpcHandlers(): void {
     void handleOpenFile(request.filePath)
   })
 
+  // ---- エクスプローラーバー一覧のクリック・Enterキーでのファイルオープン（038-explorer-sidebar FR-005） ----
+  ipcMain.on('explorer-open-file', (_event, request: ExplorerOpenFileRequest) => {
+    void handleOpenFile(request.filePath)
+  })
+
   // ---- ページ内検索（FR-002, FR-003, contracts/ipc-contract-delta.md） ----
   ipcMain.on('find-in-page', (event, request: FindInPageRequest) => {
     const view = resolveSearchViewFromSenderId(event.sender.id)
@@ -715,6 +770,7 @@ export function registerIpcHandlers(): void {
       relayoutViews(activateWin)
       syncSearchUiWithTocVisibility(activateWin)
     }
+    void computeAndSendFolderList()
   })
 
   // ---- フロート検索の開閉（research.md Decision 1a） ----
@@ -761,6 +817,16 @@ export function registerIpcHandlers(): void {
     broadcastToAllViews('theme-updated', request)
   })
 
+  // ---- エクスプローラーバー表示・非表示（038-explorer-sidebar FR-006〜FR-008） ----
+  ipcMain.on('explorer-visibility-changed', (_event, request: ExplorerVisibilityChangedRequest) => {
+    setAppSettings({ ...getAppSettings(), explorerVisible: request.visible })
+    refreshAppMenu()
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win)
+    }
+  })
+
   ipcMain.on('toc-visibility-changed', (_event, request: TocVisibilityChangedRequest) => {
     setAppSettings({ ...getAppSettings(), tocVisible: request.visible })
     refreshAppMenu()
@@ -771,6 +837,30 @@ export function registerIpcHandlers(): void {
         migrateTocSearchToFloatOnHide(win)
       }
       syncSearchUiWithTocVisibility(win)
+    }
+  })
+
+  // ---- エクスプローラーバー幅リサイズ（038-explorer-sidebar FR-010〜FR-012, research.md Decision 6） ----
+  ipcMain.on('explorer-width-preview', (_event, request: ExplorerWidthPreviewRequest) => {
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win, { explorerWidthOverride: request.width })
+    }
+  })
+
+  ipcMain.on('explorer-width-changed', (_event, request: ExplorerWidthChangedRequest) => {
+    setAppSettings({ ...getAppSettings(), explorerWidth: request.width })
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win)
+    }
+  })
+
+  // ---- 目次バー幅リサイズ（038-explorer-sidebar実機フィードバック対応、research.md Decision 6） ----
+  ipcMain.on('toc-width-preview', (_event, request: TocWidthPreviewRequest) => {
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win, { tocWidthOverride: request.width })
     }
   })
 

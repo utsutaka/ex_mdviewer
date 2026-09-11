@@ -65,6 +65,7 @@ export function getSplashWindow(): BrowserWindow | null {
  */
 let tabBarView: WebContentsView | null = null
 let sidebarTocView: WebContentsView | null = null
+let sidebarExplorerView: WebContentsView | null = null
 let searchFloatView: WebContentsView | null = null
 let contentView: WebContentsView | null = null
 /**
@@ -108,6 +109,11 @@ export function getTabBarView(): WebContentsView | null {
 
 export function getSidebarTocView(): WebContentsView | null {
   return sidebarTocView
+}
+
+/** エクスプローラーサイドバーViewを取得する（038-explorer-sidebar） */
+export function getSidebarExplorerView(): WebContentsView | null {
+  return sidebarExplorerView
 }
 
 export function getSearchFloatView(): WebContentsView | null {
@@ -159,33 +165,76 @@ export function isActiveTabTocSupportedFileKind(): boolean {
   return activeTabFileKind !== null && isTocSupported(activeTabFileKind)
 }
 
+/** `relayoutViews`のオプション引数（038-explorer-sidebar research.md Decision 6） */
+export interface RelayoutOptions {
+  /**
+   * エクスプローラーバーのドラッグ中プレビュー用の一時的な幅。指定時は`AppSettings.explorerWidth`
+   * を無視してこの値を使う（`AppSettings`自体は変更しない、永続化はしない）。
+   */
+  explorerWidthOverride?: number
+  /**
+   * TOCサイドバーのドラッグ中プレビュー用の一時的な幅。指定時は`AppSettings.tocWidth`を
+   * 無視してこの値を使う（`AppSettings`自体は変更しない、永続化はしない）。
+   * 038-explorer-sidebar実機フィードバック対応: 従来TOCの幅変更は`pointerup`（ドラッグ確定時）
+   * にしか`relayoutViews`を呼んでいなかったため、View自体のboundsはドラッグ中固定のままで、
+   * renderer側でCSS変数`--toc-width`のみを書き換えていた。本番ビルドではVEが
+   * `<style>`タグをCSS読み込み順序の先頭へ並べ替えるため、`base.css`側の
+   * `.sidebar-toc { flex: 0 0 var(--toc-width, 220px) }`が本番ビルド限定でこのCSS変数の
+   * 変更に反応してしまい、View bounds（実際の画面上ピクセル幅）とは無関係にパネル内部の
+   * flex-basisだけが変化し、空白や表示崩れが生じていた（fb3bb88と同型のCSS読み込み順序
+   * 不具合クラス、research.md Decision 9）。エクスプローラーバーと同じ「ドラッグ中は
+   * プレビューIPCでView boundsそのものを都度更新し、確定時のみ永続化する」二段階方式へ
+   * 統一し、`.sidebar-toc`側のflex-basis指定自体も削除した。
+   */
+  tocWidthOverride?: number
+}
+
 /**
- * ウィンドウ全体・TOC幅・TOC表示状態・フロート検索の開閉状態から4Viewのboundsを
- * 一元的に算出し適用する（data-model.md ViewBounds）。ウィンドウのresizeイベント、
- * TOC幅・表示状態の変更、フロート検索の開閉のいずれからも呼び出される単一の関数とする
- * ことで、レイアウト計算ロジックが分散しないようにする（research.md Decision 1a
- * 「実装上の留意点」）。
+ * ウィンドウ全体・エクスプローラー幅・TOC幅・各表示状態・フロート検索の開閉状態から
+ * 5Viewのboundsを一元的に算出し適用する（data-model.md ViewBounds）。ウィンドウの
+ * resizeイベント、エクスプローラー/TOC幅・表示状態の変更、フロート検索の開閉のいずれ
+ * からも呼び出される単一の関数とすることで、レイアウト計算ロジックが分散しないように
+ * する（research.md Decision 1a「実装上の留意点」）。
+ *
+ * 038-explorer-sidebar: エクスプローラー(左)→本文→目次(右)の3ペイン構成に変更した
+ * （research.md Decision 1）。エクスプローラーバーの表示可否は目次バーと異なり
+ * fileKindによる制限を受けない（`settings.explorerVisible`のみで決まる、spec.md FR-001）。
  */
-export function relayoutViews(win: BrowserWindow): void {
-  if (!tabBarView || !sidebarTocView || !contentView) {
+/**
+ * `setBounds`に渡す幅が数値として不正（`undefined`・`NaN`・非有限値）な場合に既定値へ
+ * フォールバックする（038-explorer-sidebar実機検証で判明: `WebContentsView.setBounds`に
+ * 不正な幅を渡すとmainプロセスが例外を投げてアプリ全体が落ちる。永続化された設定値が
+ * 何らかの理由で欠落・破損していても、レイアウト計算の最終防衛線としてここで必ず
+ * 有限の整数に補正する）。
+ */
+function sanitizeWidth(width: number | undefined, fallback: number): number {
+  return Number.isFinite(width) ? (width as number) : fallback
+}
+
+export function relayoutViews(win: BrowserWindow, options?: RelayoutOptions): void {
+  if (!tabBarView || !sidebarTocView || !sidebarExplorerView || !contentView) {
     return
   }
   const bounds = win.contentView.getBounds()
   const { width, height } = bounds
   const settings = getAppSettings()
+  const explorerWidth = settings.explorerVisible
+    ? sanitizeWidth(options?.explorerWidthOverride ?? settings.explorerWidth, 240)
+    : 0
   // 034-toc-filekind-scope FR-001, FR-002, FR-007: アクティブタブがMarkdown・HTML以外
   // （PDF・JSON・YAML・XML、またはタブなし）の場合、tocVisibleの値に関わらずTOC幅を0にする。
   // settings.tocWidth自体は変更しないため、対応種別のタブへ戻れば従来の幅で復元される。
-  const tocWidth = isTocSidebarVisible() ? settings.tocWidth : 0
+  const tocWidth = isTocSidebarVisible() ? sanitizeWidth(options?.tocWidthOverride ?? settings.tocWidth, 220) : 0
   const contentHeight = Math.max(0, height - TAB_BAR_HEIGHT)
-  const contentWidth = Math.max(0, width - tocWidth)
+  const contentWidth = Math.max(0, width - explorerWidth - tocWidth)
 
   tabBarView.setBounds({ x: 0, y: 0, width, height: TAB_BAR_HEIGHT })
-  sidebarTocView.setBounds({ x: 0, y: TAB_BAR_HEIGHT, width: tocWidth, height: contentHeight })
-  contentView.setBounds({ x: tocWidth, y: TAB_BAR_HEIGHT, width: contentWidth, height: contentHeight })
+  sidebarExplorerView.setBounds({ x: 0, y: TAB_BAR_HEIGHT, width: explorerWidth, height: contentHeight })
+  contentView.setBounds({ x: explorerWidth, y: TAB_BAR_HEIGHT, width: contentWidth, height: contentHeight })
+  sidebarTocView.setBounds({ x: explorerWidth + contentWidth, y: TAB_BAR_HEIGHT, width: tocWidth, height: contentHeight })
 
   if (searchFloatView) {
-    const floatX = tocWidth + Math.max(0, contentWidth - SEARCH_FLOAT_WIDTH - SEARCH_FLOAT_MARGIN)
+    const floatX = explorerWidth + Math.max(0, contentWidth - SEARCH_FLOAT_WIDTH - SEARCH_FLOAT_MARGIN)
     searchFloatView.setBounds({
       x: floatX,
       y: TAB_BAR_HEIGHT + SEARCH_FLOAT_MARGIN,
@@ -425,10 +474,11 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
     }
   })
 
-  // 4つのWebContentsView（タブバーView・TOCサイドバーView・本文View・フロート検索View）
-  // を生成する。フロート検索Viewは非表示状態で事前生成しておき、開くたびの新規生成による
-  // 体感遅延を避ける（実機フィードバック対応、`createSearchFloatView`参照）
+  // 5つのWebContentsView（タブバーView・エクスプローラーサイドバーView・TOCサイドバーView・
+  // 本文View・フロート検索View）を生成する。フロート検索Viewは非表示状態で事前生成しておき、
+  // 開くたびの新規生成による体感遅延を避ける（実機フィードバック対応、`createSearchFloatView`参照）
   tabBarView = new WebContentsView({ webPreferences: createViewPreferences('tab-bar-preload.js') })
+  sidebarExplorerView = new WebContentsView({ webPreferences: createViewPreferences('sidebar-explorer-preload.js') })
   sidebarTocView = new WebContentsView({ webPreferences: createViewPreferences('sidebar-toc-preload.js') })
   contentView = new WebContentsView({
     webPreferences: {
@@ -439,10 +489,12 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
   })
 
   win.contentView.addChildView(tabBarView)
+  win.contentView.addChildView(sidebarExplorerView)
   win.contentView.addChildView(sidebarTocView)
   win.contentView.addChildView(contentView)
 
   loadViewContent(tabBarView, 'tab-bar')
+  loadViewContent(sidebarExplorerView, 'sidebar-explorer')
   loadViewContent(sidebarTocView, 'sidebar-toc')
   loadViewContent(contentView, 'content')
 
@@ -452,10 +504,10 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
   win.on('resize', () => relayoutViews(win))
 
   // 033-webcontentsview-search-fix: トップレベルのwin自体には何もロードしないため、
-  // `ready-to-show`（通常はロード完了後に発火）は発火しない。代わりに3つのViewすべての
+  // `ready-to-show`（通常はロード完了後に発火）は発火しない。代わりに4つのViewすべての
   // 初回読み込み完了を待ってから表示する。
   Promise.all(
-    [tabBarView, sidebarTocView, contentView].map(
+    [tabBarView, sidebarExplorerView, sidebarTocView, contentView].map(
       (view) =>
         new Promise<void>((resolvePromise) => {
           view.webContents.once('did-finish-load', () => resolvePromise())
@@ -480,6 +532,7 @@ export function createMainWindow(initialState: WindowState): BrowserWindow {
   mainWindow = win
   win.on('closed', () => {
     tabBarView = null
+    sidebarExplorerView = null
     sidebarTocView = null
     searchFloatView = null
     contentView = null

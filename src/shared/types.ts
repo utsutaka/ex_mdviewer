@@ -99,6 +99,10 @@ export interface AppSettings {
    * 012-remember-last-directory）はこのフィールドへ統合され廃止された。
    */
   folderHistory: string[]
+  /** エクスプローラーバーの表示・非表示状態（アプリ全体で共通。038-explorer-sidebar FR-006, FR-013, FR-014） */
+  explorerVisible: boolean
+  /** エクスプローラーバーの幅（ピクセル単位の整数値、150〜480、アプリ全体で共通。038-explorer-sidebar FR-011〜FR-013） */
+  explorerWidth: number
 }
 
 /** electron-storeに永続化するスキーマ全体（constitution原則VI） */
@@ -170,6 +174,16 @@ export interface TocVisibilityChangedRequest {
 
 /** TOCサイドバーの幅の変更をmainプロセスへ通知するペイロード（021-toc-sidebar-resize） */
 export interface TocWidthChangedRequest {
+  width: number
+}
+
+/**
+ * TOCサイドバーの幅のドラッグ中プレビュー通知（renderer → main）。
+ * `AppSettings`は更新せず、一時的な幅でレイアウトのみ再計算する
+ * （038-explorer-sidebar実機フィードバック対応: エクスプローラーバーの
+ * `ExplorerWidthPreviewRequest`と同型、research.md Decision 6の「重要な発見」参照）。
+ */
+export interface TocWidthPreviewRequest {
   width: number
 }
 
@@ -350,4 +364,50 @@ export interface SearchTextChangedRequest {
 /** TOCサイドバー内検索⇔フロート検索の切替時、切替先へ検索文字列を復元させる通知 */
 export interface RestoreSearchTextPayload {
   text: string
+}
+
+// ---- 038-explorer-sidebar: エクスプローラーバー（5つ目のWebContentsView） ----
+
+/**
+ * エクスプローラーバー一覧の1エントリ。「表示中／開いている／未オープン」の3状態
+ * （FR-018）を`state`で表す。永続化はせず、アクティブタブ切替の都度算出される
+ * 一時的な情報（data-model.md）。
+ */
+export interface ExplorerEntry {
+  name: string
+  filePath: string
+  fileKind: FileKind
+  state: 'active' | 'open' | 'closed'
+}
+
+/**
+ * エクスプローラーバーViewへ、対象フォルダの一覧を配信する通知（main → renderer）。
+ * 既存の`heading-list-updated`（目次バー向け）と対になる（contracts/ipc-contract-delta.md）。
+ */
+export interface FolderListUpdatedPayload {
+  folderPath: string | null
+  entries: ExplorerEntry[]
+}
+
+/** エクスプローラーバーの表示・非表示変更の通知（renderer → main、`toc-visibility-changed`と同型） */
+export interface ExplorerVisibilityChangedRequest {
+  visible: boolean
+}
+
+/** エクスプローラーバーの幅変更（確定・永続化）の通知（renderer → main、`pointerup`時のみ送信） */
+export interface ExplorerWidthChangedRequest {
+  width: number
+}
+
+/**
+ * エクスプローラーバーの幅のドラッグ中プレビュー通知（renderer → main）。
+ * `AppSettings`は更新せず、一時的な幅でレイアウトのみ再計算する（research.md Decision 6）。
+ */
+export interface ExplorerWidthPreviewRequest {
+  width: number
+}
+
+/** エクスプローラー一覧のクリック・Enterキー操作によるファイルオープン要求（renderer → main） */
+export interface ExplorerOpenFileRequest {
+  filePath: string
 }

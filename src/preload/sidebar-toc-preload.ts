@@ -21,6 +21,9 @@ const api = {
   tocWidthChanged(width: number): void {
     ipcRenderer.send('toc-width-changed', { width })
   },
+  tocWidthPreview(width: number): void {
+    ipcRenderer.send('toc-width-preview', { width })
+  },
   findInPage(text: string, forward: boolean, findNext: boolean): void {
     ipcRenderer.send('find-in-page', { text, forward, findNext })
   },

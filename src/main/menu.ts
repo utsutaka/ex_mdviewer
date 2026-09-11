@@ -1,7 +1,7 @@
 import { Menu, dialog } from 'electron'
 import type { OpenFileDialogErrorPayload, SettingsPersistenceErrorPayload } from '@shared/types'
 import { disablePersistence, enablePersistence, getAppSettings, isPersistenceEnabled } from './store'
-import { getContentView, getMainWindow, getSidebarTocView, getTabBarView } from './window'
+import { getContentView, getMainWindow, getSidebarExplorerView, getSidebarTocView, getTabBarView } from './window'
 import { handleOpenFile } from './ipc/handlers'
 import { appVersion } from './app-version'
 
@@ -119,6 +119,14 @@ function buildEditMenuItems(): Electron.MenuItemConstructorOptions[] {
         // 033-webcontentsview-search-fix: テーマ切替の起点はタブバーView
         // （常時存在するViewの1つ、research.md Decision 6）
         getTabBarView()?.webContents.send('menu-theme-toggle-requested')
+      }
+    },
+    {
+      label: 'エクスプローラーを隠す',
+      type: 'checkbox',
+      checked: !settings.explorerVisible,
+      click: () => {
+        getSidebarExplorerView()?.webContents.send('menu-explorer-visibility-toggle-requested')
       }
     },
     {

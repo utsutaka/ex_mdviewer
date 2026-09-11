@@ -75,7 +75,9 @@ describe('005-native-menu-save-toggle: 設定保存有無', () => {
       tocVisible: true,
       tocWidth: 220,
       contentWidthMode: 'readable',
-      folderHistory: []
+      folderHistory: [],
+      explorerVisible: true,
+      explorerWidth: 240
     })
   })
 
@@ -230,6 +232,42 @@ describe('031-folder-history-menu: フォルダ履歴', () => {
 
     expect(getAppSettings().folderHistory).toHaveLength(10)
     expect(getAppSettings().folderHistory).toEqual(oversized.slice(0, 10))
+  })
+})
+
+describe('038-explorer-sidebar: 新フィールド追加時の既存設定との後方互換性', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    existsSyncMock.mockReset()
+    rmSyncMock.mockReset()
+    writeFileSyncMock.mockReset()
+    storeConstructorShouldThrow = false
+  })
+
+  it('explorerVisible/explorerWidthを持たない旧形式のappSettingsでも、既定値で補完される（実機で確認されたクラッシュ・既定非表示バグの回帰防止）', async () => {
+    existsSyncMock.mockReturnValue(false)
+    const { getAppSettings, setAppSettings } = await importStore()
+
+    // electron-store（内部のconfパッケージ）のdefaultsは浅いマージのため、appSettingsという
+    // トップレベルキーが既に存在すると、フィールド単位では合成されずファイルの内容が
+    // 丸ごと採用される。038機能追加前の永続化データを模して、新フィールドを持たない
+    // 形状をそのままStoreへ書き込む。
+    const legacyShape = {
+      theme: 'dark',
+      tocVisible: true,
+      tocWidth: 300,
+      contentWidthMode: 'full',
+      folderHistory: ['C:\\Notes']
+    }
+    setAppSettings(legacyShape as unknown as ReturnType<typeof getAppSettings>)
+
+    const settings = getAppSettings()
+    expect(settings.explorerVisible).toBe(true)
+    expect(settings.explorerWidth).toBe(240)
+    // 新フィールド以外の既存値は変更されずそのまま維持される
+    expect(settings.theme).toBe('dark')
+    expect(settings.tocWidth).toBe(300)
+    expect(settings.folderHistory).toEqual(['C:\\Notes'])
   })
 })
 

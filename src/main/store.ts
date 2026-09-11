@@ -31,7 +31,9 @@ const defaultAppSettings: AppSettings = {
   tocVisible: true,
   tocWidth: 220,
   contentWidthMode: 'readable',
-  folderHistory: []
+  folderHistory: [],
+  explorerVisible: true,
+  explorerWidth: 240
 }
 
 const defaults: PersistedStore = {
@@ -113,13 +115,24 @@ interface LegacyAppSettings extends AppSettings {
  * `folderHistory`が文字列のみの配列として既に有効であればそれをそのまま優先し、そうでない場合は
  * 旧`lastOpenedDirectory`から1件のみ移行する（いずれも無ければ空配列）。config.json破損からの
  * 復旧時や不正な値が混入していた場合も、この関数を通ることで安全側（空配列）に倒れる。
+ *
+ * 038-explorer-sidebar実機検証で判明: electron-store（内部のconfパッケージ）の`defaults`は
+ * `Object.assign({}, defaults, fileStore)`という浅いマージであり、`appSettings`という
+ * トップレベルキー自体が既存ファイルに存在する場合、そのオブジェクト全体がdefaultsを
+ * 素通りして丸ごと採用される（サブフィールド単位では合成されない）。そのため、新しい
+ * フィールド（`explorerVisible`/`explorerWidth`）を追加した後も、既存のconfig.jsonを持つ
+ * 利用者の`AppSettings`にはそれらが一切含まれず`undefined`のままになり、`explorerVisible`が
+ * falsyと評価されて既定非表示になる・`explorerWidth`が`undefined`のまま`setBounds`に渡り
+ * mainプロセスがクラッシュする、という実際の不具合が確認された。`{ ...defaultAppSettings, ...raw }`
+ * を土台にすることで、欠落しているフィールドは常に既定値で補完される（既存の有効な値は
+ * `raw`側が優先されそのまま残る）。
  */
 function normalizeAppSettings(raw: LegacyAppSettings): AppSettings {
   if (Array.isArray(raw.folderHistory) && raw.folderHistory.every((entry) => typeof entry === 'string')) {
-    return { ...raw, folderHistory: raw.folderHistory.slice(0, 10) }
+    return { ...defaultAppSettings, ...raw, folderHistory: raw.folderHistory.slice(0, 10) }
   }
   const folderHistory = typeof raw.lastOpenedDirectory === 'string' ? [raw.lastOpenedDirectory] : []
-  return { ...raw, folderHistory }
+  return { ...defaultAppSettings, ...raw, folderHistory }
 }
 
 export function getAppSettings(): AppSettings {

@@ -93,8 +93,19 @@ body {
     min-height: 0;
 }
 
+/*
+ * 038-explorer-sidebar実機フィードバック対応: 以前ここにあった`flex: 0 0 var(--toc-width,
+ * 220px)`は削除した。目次バーの実際の幅はmainプロセスのrelayoutViewsがView自体の
+ * setBoundsで決め、View内側の「全体を埋める」サイズ指定はsidebar-toc/index.htmlの
+ * インラインstyleだけが持つ設計（021-toc-sidebar-resize当時のコメント参照）のため、
+ * このflex-basis指定は本来常に無効なはずだった。しかし本番ビルド時のみCSS読み込み順序が
+ * 反転し（Viteが<style>タグを先頭へ並べ替える）、renderer側がドラッグ中に書き換える
+ * CSS変数`--toc-width`にこのルールが反応してしまい、View boundsとは無関係にパネル内部の
+ * flex-basisだけが変化して表示が壊れる不具合が実機で確認された（fb3bb88と同型のCSS読み込み
+ * 順序不具合クラス、research.md Decision 9。`.sidebar-explorer`が同じ理由で意図的にこの種の
+ * 指定を持たないのと同じ扱いへ揃えた）。
+ */
 .sidebar-toc {
-    flex: 0 0 var(--toc-width, 220px);
     min-width: 0;
     background: var(--panel-bg);
     display: flex;
@@ -105,6 +116,45 @@ body {
 /* 見出しを持たない文書では見出し一覧が空になり、TOCサイドバー自体を非表示にする（既存の:empty相当の自動非表示動作） */
 .sidebar-toc:has(#sidebar-toc-list:empty) {
     display: none;
+}
+
+/* 目次バーの固定ヘッダー領域・×ボタン（038-explorer-sidebar FR-008, FR-009） */
+.sidebar-toc__header {
+    flex: 0 0 auto;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 0 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-toc__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.6;
+}
+
+.sidebar-toc__close {
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    text-align: center;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-color);
+    font-size: 13px;
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sidebar-toc__close:hover {
+    background: var(--border-color);
+    opacity: 1;
 }
 
 .sidebar-toc-search {
@@ -121,11 +171,16 @@ body {
     display: none;
 }
 
+/*
+ * 038-explorer-sidebar: 目次バーがウィンドウ右端へ移動したため、境界線は目次バーの
+ * 左側（本文と接する側）に位置する。以前（目次バーが左端だった頃）の`border-right`
+ * では境界線が見えなくなるため`border-left`に変更した。
+ */
 .toc-resize-handle {
     flex: 0 0 4px;
     cursor: col-resize;
     background: transparent;
-    border-right: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
 }
 
 .toc-resize-handle:hover,
@@ -133,7 +188,13 @@ body {
     background: var(--accent-color);
 }
 
-.sidebar-toc:has(#sidebar-toc-list:empty) + .toc-resize-handle {
+/*
+ * 見出しを持たない文書では目次バー自体を隠す際、境界線も連動して隠す。
+ * ハンドルがnavより前（DOM順で先）に位置するため、`+`（直後の兄弟）では届かず、
+ * `:has()`で「直後の兄弟が空の目次バーである」ことを判定する（038-explorer-sidebarで
+ * DOM順序が反転したことに伴う変更）。
+ */
+.toc-resize-handle:has(+ .sidebar-toc:has(#sidebar-toc-list:empty)) {
     display: none;
 }
 
@@ -145,6 +206,79 @@ body {
     flex: 1 1 auto;
     overflow-y: auto;
     position: relative;
+}
+
+/*
+ * 038-explorer-sidebar: エクスプローラーバー。目次バー（.sidebar-toc）とは異なり、
+ * ここには意図的にflexサイズ指定（flex/flex-basis等）を追加しない。実際の幅は
+ * mainプロセスのrelayoutViewsがView自体のsetBoundsで決め、View内側の「全体を埋める」
+ * サイズ指定はsidebar-explorer/index.htmlのインラインstyleだけが持つ。同一クラスへの
+ * 矛盾するflex指定を二重に持たせると、本番ビルド時のみCSS読み込み順序が反転し表示が
+ * 壊れる不具合クラス（029-tab-toc-improvements関連、修正コミットfb3bb88）を再発しうる
+ * ため（research.md Decision 9）。
+ */
+.sidebar-explorer {
+    background: var(--panel-bg);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.sidebar-explorer__header {
+    flex: 0 0 auto;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 0 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-explorer__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.6;
+}
+
+.sidebar-explorer__close {
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    text-align: center;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-color);
+    font-size: 13px;
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sidebar-explorer__close:hover {
+    background: var(--border-color);
+    opacity: 1;
+}
+
+.sidebar-explorer__list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* リサイズハンドルの見た目は既存の目次バーリサイズハンドルに合わせる（spec.md Assumptions） */
+.explorer-resize-handle {
+    flex: 0 0 4px;
+    cursor: col-resize;
+    background: transparent;
+    border-right: 1px solid var(--border-color);
+}
+
+.explorer-resize-handle:hover,
+.explorer-resize-handle.is-dragging {
+    background: var(--accent-color);
 }
 
 .search-bar {

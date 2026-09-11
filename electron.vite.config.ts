@@ -25,6 +25,7 @@ export default defineConfig({
         input: {
           'tab-bar-preload': resolve('src/preload/tab-bar-preload.ts'),
           'sidebar-toc-preload': resolve('src/preload/sidebar-toc-preload.ts'),
+          'sidebar-explorer-preload': resolve('src/preload/sidebar-explorer-preload.ts'),
           'search-float-preload': resolve('src/preload/search-float-preload.ts'),
           'content-preload': resolve('src/preload/content-preload.ts')
         }
@@ -45,6 +46,7 @@ export default defineConfig({
           splash: resolve('src/renderer/splash.html'),
           tabBar: resolve('src/renderer/tab-bar/index.html'),
           sidebarToc: resolve('src/renderer/sidebar-toc/index.html'),
+          sidebarExplorer: resolve('src/renderer/sidebar-explorer/index.html'),
           searchFloat: resolve('src/renderer/search-float/index.html'),
           content: resolve('src/renderer/content/index.html')
         }
