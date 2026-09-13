@@ -416,15 +416,27 @@ function notifySearchFocusState(inUse: boolean): void {
   window.sidebarTocApi.searchFocusStateChanged(inUse, 'toc')
 }
 
-/** 検索欄フォーカス中のPageUp/PageDownで本文をスクロールする（FR-012） */
-function handleSearchPageScroll(event: KeyboardEvent): void {
-  if (event.key === 'PageUp') {
-    event.preventDefault()
-    window.sidebarTocApi.scrollContent('up')
-  } else if (event.key === 'PageDown') {
-    event.preventDefault()
-    window.sidebarTocApi.scrollContent('down')
-  }
+/**
+ * TOCサイドバーViewのどこにフォーカスがあってもPageUp/PageDownで本文をスクロールする
+ * （040-content-scroll-anywhere FR-001、033時点は検索欄フォーカス時限定だったFR-012を拡張）。
+ * captureフェーズで購読することで、見出しリスト項目・検索欄・移動ボタンいずれにフォーカスが
+ * あっても取りこぼさず、リスト自体のネイティブなページスクロールより本文スクロールを
+ * 優先させる（research.md Decision 1、FR-005）。
+ */
+function initPageScrollListener(): void {
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'PageUp') {
+        event.preventDefault()
+        window.sidebarTocApi.scrollContent('up')
+      } else if (event.key === 'PageDown') {
+        event.preventDefault()
+        window.sidebarTocApi.scrollContent('down')
+      }
+    },
+    { capture: true }
+  )
 }
 
 /**
@@ -496,8 +508,6 @@ function initSidebarSearch(): void {
     if (event.key === 'Enter') {
       event.preventDefault()
       search(!event.shiftKey, false)
-    } else if (event.key === 'PageUp' || event.key === 'PageDown') {
-      handleSearchPageScroll(event)
     } else {
       handleSearchKeyNav(event)
     }
@@ -505,7 +515,6 @@ function initSidebarSearch(): void {
   ;[searchPrevBtn, searchNextBtn].forEach((btn) => {
     btn.addEventListener('focus', () => notifySearchFocusState(true))
     btn.addEventListener('blur', () => notifySearchFocusState(false))
-    btn.addEventListener('keydown', handleSearchPageScroll)
   })
 
   window.sidebarTocApi.onFindInPageResult((payload) => updateSearchCount(payload))
@@ -662,6 +671,7 @@ async function init(): Promise<void> {
   initTocResizeHandle()
   initZoom()
   initFocusCycleEnteredListener()
+  initPageScrollListener()
 }
 
 void init()

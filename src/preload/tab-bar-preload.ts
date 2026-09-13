@@ -38,6 +38,9 @@ const api = {
   requestSearchFocus(): void {
     ipcRenderer.send('request-search-focus')
   },
+  scrollContent(direction: 'up' | 'down'): void {
+    ipcRenderer.send('scroll-content', { direction })
+  },
   requestFindNext(forward: boolean): void {
     ipcRenderer.send('request-find-next', { forward })
   },

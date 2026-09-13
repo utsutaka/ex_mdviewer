@@ -50,17 +50,6 @@ function handleSearchKeyNav(event: KeyboardEvent): void {
   }
 }
 
-/** 検索欄フォーカス中のPageUp/PageDownで本文をスクロールする（FR-012） */
-function handlePageScroll(event: KeyboardEvent): void {
-  if (event.key === 'PageUp') {
-    event.preventDefault()
-    window.searchFloatApi.scrollContent('up')
-  } else if (event.key === 'PageDown') {
-    event.preventDefault()
-    window.searchFloatApi.scrollContent('down')
-  }
-}
-
 /**
  * `findNext`はElectronの`webContents.findInPage`の`options.findNext`にそのまま渡る値であり、
  * 直感に反して「新規セッションを開始するか」を意味する（`true`＝新規検索として最初の一致から
@@ -195,7 +184,7 @@ function ensureInitialized(): void {
     btn.addEventListener('blur', () => notifySearchFocusState(false))
   })
 
-  /** Enter/Shift+Enter/F3/Shift+F3/PageUp/PageDownによるキーボードのみでの候補移動・本文スクロール（FR-030, FR-012） */
+  /** Enter/Shift+Enter/F3/Shift+F3によるキーボードのみでの候補移動（FR-030） */
   inputEl.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -203,8 +192,6 @@ function ensureInitialized(): void {
     } else if (event.key === 'Escape') {
       event.preventDefault()
       window.searchFloatApi.closeSearchFloat()
-    } else if (event.key === 'PageUp' || event.key === 'PageDown') {
-      handlePageScroll(event)
     } else {
       handleSearchKeyNav(event)
     }
@@ -298,6 +285,29 @@ function initGlobalFindNextShortcut(): void {
   })
 }
 
+/**
+ * フロート検索ViewのどこにフォーカスがあってもPageUp/PageDownで本文をスクロールする
+ * （040-content-scroll-anywhere FR-001、033時点は入力欄フォーカス時限定だったFR-012を拡張）。
+ * captureフェーズで購読することで、入力欄・移動ボタンいずれにフォーカスがあっても
+ * 取りこぼさず、入力要素限定だった旧`handlePageScroll`分岐と重複発火しないよう
+ * 購読箇所をここへ一本化する（research.md Decision 1）。
+ */
+function initPageScrollListener(): void {
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'PageUp') {
+        event.preventDefault()
+        window.searchFloatApi.scrollContent('up')
+      } else if (event.key === 'PageDown') {
+        event.preventDefault()
+        window.searchFloatApi.scrollContent('down')
+      }
+    },
+    { capture: true }
+  )
+}
+
 async function init(): Promise<void> {
   const settings = await window.searchFloatApi.getAppSettings()
   document.documentElement.classList.add(`theme-${settings.theme}`)
@@ -306,6 +316,7 @@ async function init(): Promise<void> {
   initRestoreSearchTextListener()
   initSearchFloatShownListener()
   initGlobalFindNextShortcut()
+  initPageScrollListener()
   ensureInitialized()
 }
 

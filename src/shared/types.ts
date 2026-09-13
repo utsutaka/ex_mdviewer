@@ -290,7 +290,12 @@ export interface NavigateToHeadingRequest {
   anchorId: string
 }
 
-/** 検索欄フォーカス中のPageUp/PageDownキー押下による本文スクロール要求（FR-012） */
+/**
+ * PageUp/PageDownキー押下による本文スクロール要求（033-webcontentsview-search-fix FR-012）。
+ * 040-content-scroll-anywhere FR-001により、検索欄フォーカス時限定から、タブバー・
+ * TOCサイドバー・エクスプローラーサイドバー・検索フロートいずれのUI用Viewにフォーカスが
+ * あっても転送される対象へ拡張された。
+ */
 export interface ScrollContentRequest {
   direction: 'up' | 'down'
 }

@@ -24,6 +24,9 @@ const api = {
   openFile(filePath: string): void {
     ipcRenderer.send('explorer-open-file', { filePath })
   },
+  scrollContent(direction: 'up' | 'down'): void {
+    ipcRenderer.send('scroll-content', { direction })
+  },
   requestFocusCycle(direction: 'next' | 'prev'): void {
     const request: RequestFocusCycleRequest = { from: 'explorer', direction }
     ipcRenderer.send('request-focus-cycle', request)

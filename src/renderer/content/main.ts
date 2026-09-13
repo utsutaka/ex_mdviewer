@@ -514,7 +514,12 @@ function initNavigateToHeadingListener(): void {
   })
 }
 
-/** 検索欄フォーカス中のPageUp/PageDownによる本文スクロール（FR-012） */
+/**
+ * PageUp/PageDownによる本文スクロール（033-webcontentsview-search-fix FR-012）。
+ * 040-content-scroll-anywhere FR-001により、検索欄フォーカス時限定から、いずれのUI用View
+ * にフォーカスがあっても転送される対象へ拡張された。本関数（受信側）自体は送信元Viewを
+ * 問わない実装のため変更していない。
+ */
 function initScrollContentListener(): void {
   window.contentApi.onScrollContent((request: ScrollContentRequest) => {
     // 033-webcontentsview-search-fix: 実際にスクロール可能なのは`window`（body）ではなく

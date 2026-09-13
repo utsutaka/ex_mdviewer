@@ -187,6 +187,32 @@ function initThemeListener(): void {
   })
 }
 
+/**
+ * タブバーViewのどこにフォーカスがあってもPageUp/PageDownで本文をスクロールする
+ * （040-content-scroll-anywhere FR-001）。`tab-bar/components/tab-bar.ts`の
+ * `rawToggleEl`（`</>`表示切替ボタン）がkeydownで無条件に`event.stopPropagation()`を
+ * 呼んでいる（039-tab-reorder-keyboard-nav Decision 2、Enter/Spaceキーのネイティブ
+ * click変換を阻害しないための既存実装）ため、bubbleフェーズの`window`購読ではこの
+ * ボタンにフォーカスがある間のPageUp/PageDownを取りこぼす。captureフェーズで購読する
+ * ことで、イベントが対象要素に到達し`stopPropagation()`が呼ばれる前に確実に検知する
+ * （research.md Decision 1）。
+ */
+function initPageScrollListener(): void {
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'PageUp') {
+        event.preventDefault()
+        window.tabBarApi.scrollContent('up')
+      } else if (event.key === 'PageDown') {
+        event.preventDefault()
+        window.tabBarApi.scrollContent('down')
+      }
+    },
+    { capture: true }
+  )
+}
+
 async function init(): Promise<void> {
   const settings = await window.tabBarApi.getAppSettings()
   currentTheme = settings.theme
@@ -201,6 +227,7 @@ async function init(): Promise<void> {
   initThemeListener()
   initDragAndDrop()
   initSearchShortcut()
+  initPageScrollListener()
 }
 
 void init()
