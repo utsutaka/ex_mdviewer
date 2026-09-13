@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, FolderListUpdatedPayload, Theme } from '@shared/types'
+import type {
+  AppSettings,
+  FocusCycleEnteredPayload,
+  FolderListUpdatedPayload,
+  RequestFocusCycleRequest,
+  Theme
+} from '@shared/types'
 
 /** エクスプローラーサイドバーView向けAPI（038-explorer-sidebar、sidebar-toc-preload.tsと同型） */
 const api = {
@@ -18,7 +24,16 @@ const api = {
   openFile(filePath: string): void {
     ipcRenderer.send('explorer-open-file', { filePath })
   },
+  requestFocusCycle(direction: 'next' | 'prev'): void {
+    const request: RequestFocusCycleRequest = { from: 'explorer', direction }
+    ipcRenderer.send('request-focus-cycle', request)
+  },
 
+  onFocusCycleEntered(callback: (payload: FocusCycleEnteredPayload) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FocusCycleEnteredPayload): void => callback(payload)
+    ipcRenderer.on('focus-cycle-entered', listener)
+    return () => ipcRenderer.removeListener('focus-cycle-entered', listener)
+  },
   onFolderListUpdated(callback: (payload: FolderListUpdatedPayload) => void): () => void {
     const listener = (_event: Electron.IpcRendererEvent, payload: FolderListUpdatedPayload): void => callback(payload)
     ipcRenderer.on('folder-list-updated', listener)

@@ -76,6 +76,27 @@
     box-shadow: inset 0 0 0 2px var(--accent-color);
 }
 
+/*
+ * ドラッグ中のタブの見た目（039-tab-reorder-keyboard-nav FR-002）。実機検証の結果、
+ * ドラッグ中にDOM上で実際に要素を移動（insertBefore）させるとPointer Captureが失われる
+ * 不具合を確認したため、ドラッグ中はtransformによる追従のみで視覚的に示し、DOM移動は
+ * ドロップ確定時（pointerup）の1回のみに限定した（research.md「残存する技術的リスク」
+ * 参照）。`.tab-bar-wrapper`・`.tab-bar`・`.tab-bar-scroll-btn`のflex指定には触れない
+ * （research.md Decision 6、FR-004b。過去の本番ビルド限定回帰の再発防止）。
+ */
+.tab-bar__tab.is-dragging {
+    position: relative;
+    z-index: 2;
+    opacity: 0.85;
+    cursor: grabbing;
+    transition: none;
+}
+
+/* ドロップ予定位置インジケーター：挿入先タブの左端に縦線を表示する（FR-002） */
+.tab-bar__tab.is-drop-target-before {
+    box-shadow: inset 2px 0 0 0 var(--accent-color);
+}
+
 .tab-bar__label {
     flex: 1 1 auto;
     min-width: 0;

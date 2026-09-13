@@ -15,6 +15,8 @@ import type {
   FileOpenedPayload,
   FindInPageRequest,
   FindInPageResultPayload,
+  FocusBlockId,
+  FocusCycleEnteredPayload,
   FocusTabPayload,
   FolderListUpdatedPayload,
   HeadingListUpdatedPayload,
@@ -22,6 +24,7 @@ import type {
   OpenFileRequest,
   PdfTabActiveChangedRequest,
   RequestFindNextRequest,
+  RequestFocusCycleRequest,
   ScrollContentRequest,
   SearchFocusStateChangedRequest,
   SearchTextChangedRequest,
@@ -40,6 +43,7 @@ import type {
 } from '@shared/types'
 import { resolveFileKind } from '@shared/file-kind'
 import { buildExplorerEntries } from '../explorer-listing'
+import { computeNextFocusBlock } from '../focus-cycle'
 import { decodeFileBuffer } from '../file-encoding'
 import { yamlToStructuredNodes } from '../yaml-adapter'
 import { unwatchFile, watchFile } from '../file-watcher'
@@ -186,6 +190,10 @@ export async function handleOpenFile(filePath: string): Promise<void> {
   const existing = findExistingTabByPath(filePath)
   if (existing) {
     clearSearchOnTabSwitch(existing.tabId)
+    // ファイルを開いた直後にどのViewにもOSレベルのフォーカスが無く、Tabキーが
+    // 何にも作用しない状態になる不具合の修正（039-tab-reorder-keyboard-nav FR-006a）。
+    // tab塊（タブバーView）へフォーカスを当て、4塊巡回の起点を必ず確立する。
+    getTabBarView()?.webContents.focus()
     const payload: FocusTabPayload = { tabId: existing.tabId }
     getTabBarView()?.webContents.send('focus-tab', payload)
     const activatePayload: ActivateTabContentPayload = { tabId: existing.tabId }
@@ -212,6 +220,8 @@ export async function handleOpenFile(filePath: string): Promise<void> {
 
   const title = basename(filePath)
   const tabCreated: TabCreatedPayload = { tabId, filePath, title }
+  // 新規タブ作成時も同様にtab塊へフォーカスを当てる（FR-006a、上記の既存タブ分岐と同じ理由）
+  getTabBarView()?.webContents.focus()
   getTabBarView()?.webContents.send('tab-created', tabCreated)
   const tabContentCreated: TabContentCreatedPayload = tabCreated
   // 033-webcontentsview-search-fix: タブバーView・本文View両方への通知が一定時間内に
@@ -675,6 +685,46 @@ export function setupFoundInPageRelay(): void {
   attachZoomWheelRelay()
 }
 
+function getFocusBlockView(block: FocusBlockId) {
+  switch (block) {
+    case 'tabBar':
+      return getTabBarView()
+    case 'explorer':
+      return getSidebarExplorerView()
+    case 'content':
+      return getContentView()
+    case 'toc':
+      return getSidebarTocView()
+  }
+}
+
+/**
+ * request-focus-cycleハンドラ（039-tab-reorder-keyboard-nav FR-006〜FR-011）。
+ * 各Viewの境界（roving tabindexの単一停止点、または本文コンテナ自体）でのTab/Shift+Tabキー
+ * 押下により送信される。対象Viewの`webContents`が破棄済み・未初期化の場合は例外を投げず
+ * 何もしない（`033-webcontentsview-search-fix` Decision 9と同様のnullチェックパターン、
+ * contracts/ipc-contract-delta.md参照）。
+ */
+function handleRequestFocusCycle(request: RequestFocusCycleRequest): void {
+  const visibility: Record<FocusBlockId, boolean> = {
+    tabBar: openTabs.size > 0,
+    explorer: getAppSettings().explorerVisible,
+    content: openTabs.size > 0,
+    toc: isTocSidebarVisible()
+  }
+  const target = computeNextFocusBlock(request.from, request.direction, visibility)
+  if (target === null) {
+    return
+  }
+  const view = getFocusBlockView(target)
+  if (!view) {
+    return
+  }
+  view.webContents.focus()
+  const payload: FocusCycleEnteredPayload = { direction: request.direction }
+  view.webContents.send('focus-cycle-entered', payload)
+}
+
 let handlersRegistered = false
 
 /**
@@ -797,6 +847,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.on('request-find-next', (_event, request: RequestFindNextRequest) => {
     handleFindNextRequest(request.forward)
+  })
+
+  ipcMain.on('request-focus-cycle', (_event, request: RequestFocusCycleRequest) => {
+    handleRequestFocusCycle(request)
   })
 
   /**

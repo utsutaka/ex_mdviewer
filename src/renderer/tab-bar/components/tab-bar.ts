@@ -97,13 +97,191 @@ function initTabBarScroll(): void {
 export function initTabBar(cb: TabBarCallbacks): void {
   callbacks = cb
   initTabBarScroll()
+  // 塊への入場時（Tab/Shift+Tabで他の塊からtab塊へ移動してきた場合）、現在アクティブな
+  // タブへフォーカスする（039-tab-reorder-keyboard-nav、research.md Decision 5）。
+  window.tabBarApi.onFocusCycleEntered(() => {
+    for (const state of tabElements.values()) {
+      if (state.el.classList.contains('is-active')) {
+        state.el.focus()
+        return
+      }
+    }
+  })
 }
 
+/** ドラッグ開始とみなす移動量の閾値（px）。単純なクリックとドラッグ操作を区別する */
+const DRAG_THRESHOLD_PX = 4
+
+let draggingTabId: string | null = null
+let dragPointerId: number | null = null
+let dragStartX = 0
+let dragLastClientX = 0
+let hasDraggedPastThreshold = false
+/** ドラッグ確定直後に発火するclickイベントでタブがアクティブ化されるのを防ぐ（FR-001a） */
+let suppressClickForTabId: string | null = null
+
+/**
+ * 現在のポインタX座標を基準に、ドロップ予定位置（挿入先の参照要素）を求める
+ * （039-tab-reorder-keyboard-nav FR-001〜FR-003, FR-005）。他のタブの中心を基準に決める。
+ * `null`は末尾への挿入を意味する。
+ */
+function findDropReference(bar: HTMLElement, draggedEl: HTMLElement, clientX: number): HTMLElement | null {
+  const others = Array.from(bar.querySelectorAll<HTMLElement>('.tab-bar__tab')).filter((el) => el !== draggedEl)
+  for (const candidate of others) {
+    const rect = candidate.getBoundingClientRect()
+    const midpoint = rect.left + rect.width / 2
+    if (clientX < midpoint) {
+      return candidate
+    }
+  }
+  return null
+}
+
+/**
+ * ドロップ予定位置の参照要素に、視覚的な挿入位置インジケーターを付与する（FR-002）。
+ * ドラッグ中は実際のDOM移動を行わない（`insertBefore`によるDOM移動はPointer Captureを
+ * 喪失させ、以降の`pointermove`/`pointerup`が発火しなくなる実機不具合が確認されたため、
+ * research.md「残存する技術的リスク」記載の懸念が実際に顕在化した。DOM移動はドロップ確定時
+ * 〈`pointerup`〉の1回のみに限定し、ドラッグ中は`transform`によるライブ追従とクラス付与
+ * のみで視覚的に示す）。
+ */
+function updateDropIndicator(reference: HTMLElement | null): void {
+  for (const state of tabElements.values()) {
+    state.el.classList.remove('is-drop-target-before')
+  }
+  reference?.classList.add('is-drop-target-before')
+}
+
+function clearDropIndicator(): void {
+  for (const state of tabElements.values()) {
+    state.el.classList.remove('is-drop-target-before')
+  }
+}
+
+function resetDragState(): void {
+  draggingTabId = null
+  dragPointerId = null
+  hasDraggedPastThreshold = false
+  dragLastClientX = 0
+}
+
+/**
+ * タブ要素へのPointer Eventsによるドラッグ並び替え（039-tab-reorder-keyboard-nav
+ * FR-001〜FR-005, FR-001a）。既存の「タブバー領域への外部ファイルドラッグ&ドロップで
+ * 開く」機能（`tab-bar/main.ts`のネイティブHTML5 D&D）とは`DataTransfer`を介さず、
+ * 実装上完全に独立している（research.md Decision 3）。
+ */
+function initTabDrag(el: HTMLDivElement, tabId: string): void {
+  el.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) {
+      return
+    }
+    const targetEl = event.target as HTMLElement
+    if (targetEl.closest('.tab-bar__raw-toggle, .tab-bar__close')) {
+      // RAW切替・閉じるボタンでの操作は既存のクリック動作に委ねる（ドラッグを開始しない）
+      return
+    }
+    draggingTabId = tabId
+    dragPointerId = event.pointerId
+    dragStartX = event.clientX
+    dragLastClientX = event.clientX
+    hasDraggedPastThreshold = false
+    el.setPointerCapture(event.pointerId)
+  })
+
+  el.addEventListener('pointermove', (event) => {
+    if (draggingTabId !== tabId || dragPointerId !== event.pointerId) {
+      return
+    }
+    if (!hasDraggedPastThreshold) {
+      if (Math.abs(event.clientX - dragStartX) < DRAG_THRESHOLD_PX) {
+        return
+      }
+      hasDraggedPastThreshold = true
+      el.classList.add('is-dragging')
+    }
+    dragLastClientX = event.clientX
+    // DOM移動はまだ行わず、transformによる追従とドロップ位置インジケーターのみ更新する
+    el.style.transform = `translateX(${event.clientX - dragStartX}px)`
+    updateDropIndicator(findDropReference(getTabBarEl(), el, event.clientX))
+  })
+
+  el.addEventListener('pointerup', (event) => {
+    if (draggingTabId !== tabId || dragPointerId !== event.pointerId) {
+      return
+    }
+    el.releasePointerCapture(event.pointerId)
+    el.classList.remove('is-dragging')
+    el.style.transform = ''
+    clearDropIndicator()
+
+    if (hasDraggedPastThreshold) {
+      const bar = getTabBarEl()
+      const barRect = bar.getBoundingClientRect()
+      const isOutsideBar =
+        event.clientX < barRect.left ||
+        event.clientX > barRect.right ||
+        event.clientY < barRect.top ||
+        event.clientY > barRect.bottom
+      if (isOutsideBar) {
+        // タブバー外へのドロップは無効とし、元の位置のまま変更しない（FR-005）
+      } else {
+        // ドロップ確定時にのみDOM上の位置を1回だけ確定させる（research.md参照）
+        const reference = findDropReference(bar, el, dragLastClientX)
+        if (reference) {
+          bar.insertBefore(el, reference)
+        } else {
+          bar.appendChild(el)
+        }
+      }
+      suppressClickForTabId = tabId
+      updateScrollButtonsVisibility()
+    }
+
+    resetDragState()
+  })
+
+  el.addEventListener('pointercancel', () => {
+    if (draggingTabId !== tabId) {
+      return
+    }
+    el.classList.remove('is-dragging')
+    el.style.transform = ''
+    clearDropIndicator()
+    // ドラッグ取消時はDOM移動自体を行っていないため、位置を戻す処理は不要
+    resetDragState()
+  })
+}
+
+/**
+ * DOM子要素の配列からタブID順序配列を返す純粋関数（039-tab-reorder-keyboard-nav、
+ * research.md Decision 4）。`tabId`が`undefined`の要素（タブ以外の要素が紛れ込んだ場合）は除外する。
+ */
+export function tabIdsFromDomOrder(children: readonly { tabId: string | undefined }[]): string[] {
+  return children
+    .map((child) => child.tabId)
+    .filter((tabId): tabId is string => tabId !== undefined)
+}
+
+/**
+ * タブの並び順は、`tabElements`（Mapの挿入順）ではなく`#tab-bar`のDOM上の実際の子要素順を
+ * 正とする（039-tab-reorder-keyboard-nav、research.md Decision 4）。ドラッグ＆ドロップによる
+ * 並び替えはDOM上の要素移動のみで完結し、この関数を経由する既存の全ロジック（矢印キー切替・
+ * 自動スクロール・横スクロールボタン表示判定）が変更なしに新しい並び順へ追随する。
+ */
 function orderedTabIds(): string[] {
-  return Array.from(tabElements.keys())
+  const bar = getTabBarEl()
+  const children = Array.from(bar.children).map((el) => ({ tabId: (el as HTMLElement).dataset.tabId }))
+  return tabIdsFromDomOrder(children)
 }
 
-/** 矢印キー・Enterによるキーボードのみでのタブ切替、Deleteによるクローズ（FR-031） */
+/**
+ * tab塊内のキー操作（039-tab-reorder-keyboard-nav FR-012〜FR-018）。
+ * 左右矢印キーでタブ切替（FR-012、自動スクロールは`setActiveTabUi`経由の
+ * `scrollTabIntoViewIfNeeded`で担保）、EnterキーのみでタブをアクティブID化（FR-015）、
+ * スペースキーでRAW表示切替（FR-014）、Delete/Ctrl+Wキーでクローズ（FR-019、既存維持）、
+ * Tab/Shift+Tabキーで塊外（次/前の塊）へ直接離脱する（FR-017, FR-018）。
+ */
 function handleTabKeydown(event: KeyboardEvent, tabId: string): void {
   const ids = orderedTabIds()
   const index = ids.indexOf(tabId)
@@ -118,12 +296,18 @@ function handleTabKeydown(event: KeyboardEvent, tabId: string): void {
     const prevId = ids[Math.max(index - 1, 0)]
     tabElements.get(prevId)?.el.focus()
     callbacks?.onActivate(prevId)
-  } else if (event.key === 'Enter' || event.key === ' ') {
+  } else if (event.key === 'Enter') {
     event.preventDefault()
     callbacks?.onActivate(tabId)
+  } else if (event.key === ' ') {
+    event.preventDefault()
+    callbacks?.onToggleDisplayMode(tabId)
   } else if (event.key === 'Delete' || (event.key.toLowerCase() === 'w' && event.ctrlKey)) {
     event.preventDefault()
     callbacks?.onClose(tabId)
+  } else if (event.key === 'Tab') {
+    event.preventDefault()
+    window.tabBarApi.requestFocusCycle(event.shiftKey ? 'prev' : 'next')
   }
 }
 
@@ -142,7 +326,10 @@ export function addTab(tabId: string, filePath: string, title: string, fileKind:
   el.className = 'tab-bar__tab is-loading'
   el.dataset.tabId = tabId
   el.title = filePath
-  el.tabIndex = 0
+  // roving tabindexで管理する（039-tab-reorder-keyboard-nav Decision 2）。新規タブは
+  // 追加直後に必ず`setActiveTab`→`setActiveTabUi`が呼ばれ`updateRovingTabindex`で
+  // 確定するため、ここでは非アクティブ値（-1）で作成する。
+  el.tabIndex = -1
   el.setAttribute('role', 'tab')
 
   const spinnerEl = document.createElement('span')
@@ -160,6 +347,9 @@ export function addTab(tabId: string, filePath: string, title: string, fileKind:
     rawToggleEl.className = 'tab-bar__raw-toggle'
     rawToggleEl.textContent = '</>'
     rawToggleEl.title = '生データ表示に切替'
+    // Tabキーでの到達対象から除外する（039-tab-reorder-keyboard-nav Decision 2）。
+    // キーボードからの切替はtab-bar__tab側のスペースキーに一本化する（FR-014）。
+    rawToggleEl.tabIndex = -1
     rawToggleEl.addEventListener('click', (event) => {
       event.stopPropagation()
       callbacks?.onToggleDisplayMode(tabId)
@@ -177,14 +367,25 @@ export function addTab(tabId: string, filePath: string, title: string, fileKind:
   closeEl.className = 'tab-bar__close'
   closeEl.textContent = '×'
   closeEl.setAttribute('aria-label', 'タブを閉じる')
+  // Tabキーでの到達対象から除外する（039-tab-reorder-keyboard-nav Decision 2）。
+  // キーボードからのクローズはtab-bar__tab側のDelete/Ctrl+Wキーに一本化する（FR-019）。
+  closeEl.tabIndex = -1
   closeEl.addEventListener('click', (event) => {
     event.stopPropagation()
     callbacks?.onClose(tabId)
   })
 
   el.append(spinnerEl, labelEl, ...(rawToggleEl ? [rawToggleEl] : []), closeEl)
-  el.addEventListener('click', () => callbacks?.onActivate(tabId))
+  el.addEventListener('click', () => {
+    if (suppressClickForTabId === tabId) {
+      // ドラッグ確定直後のclick発火であり、タブをアクティブ化してはならない（FR-001a）
+      suppressClickForTabId = null
+      return
+    }
+    callbacks?.onActivate(tabId)
+  })
   el.addEventListener('keydown', (event) => handleTabKeydown(event, tabId))
+  initTabDrag(el, tabId)
 
   bar.appendChild(el)
   tabElements.set(tabId, { tabId, el, rawToggleEl })
@@ -221,10 +422,22 @@ export function removeTab(tabId: string): void {
   updateScrollButtonsVisibility()
 }
 
+/**
+ * tab塊をroving tabindexの単一停止点として維持する（039-tab-reorder-keyboard-nav
+ * Decision 2）。アクティブなタブのみ`tabIndex = 0`とし、他のタブ本体は`-1`にする。
+ * RAW切替・閉じるボタンは常時`-1`（Tab到達対象から除外済み、`addTab`参照）。
+ */
+function updateRovingTabindex(activeTabId: string): void {
+  for (const [id, state] of tabElements) {
+    state.el.tabIndex = id === activeTabId ? 0 : -1
+  }
+}
+
 export function setActiveTabUi(tabId: string): void {
   for (const [id, state] of tabElements) {
     state.el.classList.toggle('is-active', id === tabId)
   }
+  updateRovingTabindex(tabId)
   scrollTabIntoViewIfNeeded(tabId)
 }
 

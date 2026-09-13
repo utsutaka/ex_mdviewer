@@ -2,8 +2,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppSettings,
   FindInPageResultPayload,
+  FocusCycleEnteredPayload,
   HeadingListUpdatedPayload,
   NavigateToHeadingRequest,
+  RequestFocusCycleRequest,
   RestoreSearchTextPayload,
   SearchClearedPayload,
   Theme,
@@ -48,7 +50,16 @@ const api = {
   notifyZoomDelta(payload: ZoomDeltaRequest): void {
     ipcRenderer.send('zoom-delta', payload)
   },
+  requestFocusCycle(direction: 'next' | 'prev'): void {
+    const request: RequestFocusCycleRequest = { from: 'toc', direction }
+    ipcRenderer.send('request-focus-cycle', request)
+  },
 
+  onFocusCycleEntered(callback: (payload: FocusCycleEnteredPayload) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FocusCycleEnteredPayload): void => callback(payload)
+    ipcRenderer.on('focus-cycle-entered', listener)
+    return () => ipcRenderer.removeListener('focus-cycle-entered', listener)
+  },
   onFindInPageResult(callback: (payload: FindInPageResultPayload) => void): () => void {
     const listener = (_event: Electron.IpcRendererEvent, payload: FindInPageResultPayload): void => callback(payload)
     ipcRenderer.on('find-in-page-result', listener)

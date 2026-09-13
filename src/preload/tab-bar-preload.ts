@@ -4,7 +4,9 @@ import type {
   CloseTabRequest,
   CloseTabResponse,
   DisplayModeChangedPayload,
+  FocusCycleEnteredPayload,
   FocusTabPayload,
+  RequestFocusCycleRequest,
   TabCreatedPayload,
   Theme
 } from '@shared/types'
@@ -39,7 +41,16 @@ const api = {
   requestFindNext(forward: boolean): void {
     ipcRenderer.send('request-find-next', { forward })
   },
+  requestFocusCycle(direction: 'next' | 'prev'): void {
+    const request: RequestFocusCycleRequest = { from: 'tabBar', direction }
+    ipcRenderer.send('request-focus-cycle', request)
+  },
 
+  onFocusCycleEntered(callback: (payload: FocusCycleEnteredPayload) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FocusCycleEnteredPayload): void => callback(payload)
+    ipcRenderer.on('focus-cycle-entered', listener)
+    return () => ipcRenderer.removeListener('focus-cycle-entered', listener)
+  },
   onTabCreated(callback: (payload: TabCreatedPayload) => void): () => void {
     const listener = (_event: Electron.IpcRendererEvent, payload: TabCreatedPayload): void => callback(payload)
     ipcRenderer.on('tab-created', listener)

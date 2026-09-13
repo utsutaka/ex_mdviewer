@@ -44,6 +44,10 @@ async function closeTab(tabId: string): Promise<void> {
     const nextId = firstTabId()
     if (nextId) {
       setActiveTab(nextId)
+      // tab塊がroving tabindexの単一停止点であり続けるよう、新たにアクティブ化された
+      // タブへフォーカスを移す（039-tab-reorder-keyboard-nav FR-019a）。タブが0件になった
+      // 場合（nextIdがない）は、tab塊自体が巡回対象から除外される（FR-009a）ため何もしない。
+      focusTabUi(nextId)
     } else {
       activeTabId = ''
     }
@@ -82,6 +86,9 @@ function initTabCreatedListener(): void {
     })
     addTab(payload.tabId, payload.filePath, payload.title, fileKind)
     setActiveTab(payload.tabId)
+    // ファイルを開いた直後にどこにもフォーカスが無くTabキーが効かない不具合の修正
+    // （039-tab-reorder-keyboard-nav FR-006a）。新規タブへDOMフォーカスを当てる
+    focusTabUi(payload.tabId)
   })
 }
 

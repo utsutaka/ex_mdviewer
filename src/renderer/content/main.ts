@@ -69,6 +69,29 @@ function getContentRoot(): HTMLElement {
 }
 
 /**
+ * 本文コンテナ自体を4塊巡回（039-tab-reorder-keyboard-nav FR-006〜FR-011）における
+ * 「本文」塊の境界とみなす。本文内部のリンク等、既存のフォーカス順序自体は変更しない（FR-021）。
+ * `tabindex="-1"`を付与し、`onFocusCycleEntered`受信時にプログラム的な`focus()`を
+ * 可能にする（一般的な「メインコンテンツへのフォーカス」パターン）。
+ */
+function initFocusCycle(): void {
+  const root = getContentRoot()
+  root.tabIndex = -1
+
+  root.addEventListener('keydown', (event) => {
+    if (event.target !== root || event.key !== 'Tab') {
+      return
+    }
+    event.preventDefault()
+    window.contentApi.requestFocusCycle(event.shiftKey ? 'prev' : 'next')
+  })
+
+  window.contentApi.onFocusCycleEntered(() => {
+    root.focus()
+  })
+}
+
+/**
  * アクティブタブを切り替える。非アクティブ化されるタブのDOMノードをデタッチし、
  * アクティブ化されるタブのDOMノードを（キャッシュ済みであれば再生成せず）再アタッチする
  * （FR-009、research.md Decision 2）。PDFタブについては、ページ位置ポーリングの
@@ -662,6 +685,7 @@ async function init(): Promise<void> {
   initDragAndDrop()
   initSearchShortcut()
   initZoom()
+  initFocusCycle()
 }
 
 void init()

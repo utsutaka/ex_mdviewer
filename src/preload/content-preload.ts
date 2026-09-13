@@ -6,11 +6,13 @@ import type {
   DisplayModeChangedPayload,
   FileMissingPayload,
   FileOpenedPayload,
+  FocusCycleEnteredPayload,
   HeadingListUpdatedPayload,
   NavigateToHeadingRequest,
   OpenFileDialogErrorPayload,
   PdfPageInfoPayload,
   PdfTabActiveChangedRequest,
+  RequestFocusCycleRequest,
   ScrollContentRequest,
   SettingsPersistenceErrorPayload,
   TabContentClosedPayload,
@@ -60,7 +62,16 @@ const api = {
   notifyZoomDelta(payload: ZoomDeltaRequest): void {
     ipcRenderer.send('zoom-delta', payload)
   },
+  requestFocusCycle(direction: 'next' | 'prev'): void {
+    const request: RequestFocusCycleRequest = { from: 'content', direction }
+    ipcRenderer.send('request-focus-cycle', request)
+  },
 
+  onFocusCycleEntered(callback: (payload: FocusCycleEnteredPayload) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FocusCycleEnteredPayload): void => callback(payload)
+    ipcRenderer.on('focus-cycle-entered', listener)
+    return () => ipcRenderer.removeListener('focus-cycle-entered', listener)
+  },
   onTabContentCreated(callback: (payload: TabContentCreatedPayload) => void): () => void {
     const listener = (_event: Electron.IpcRendererEvent, payload: TabContentCreatedPayload): void => callback(payload)
     ipcRenderer.on('tab-content-created', listener)

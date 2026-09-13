@@ -411,3 +411,20 @@ export interface ExplorerWidthPreviewRequest {
 export interface ExplorerOpenFileRequest {
   filePath: string
 }
+
+/**
+ * キーボードによるフォーカス移動の単位となる4つの塊（039-tab-reorder-keyboard-nav、data-model.md FocusBlock）。
+ * 固定巡回順序は`tabBar → explorer → content → toc`（以降循環）。浮遊検索バーは含まない（FR-010）。
+ */
+export type FocusBlockId = 'tabBar' | 'explorer' | 'content' | 'toc'
+
+/** 塊間フォーカス移動の要求（各Viewの境界でのTab/Shift+Tabキー押下時、renderer → main） */
+export interface RequestFocusCycleRequest {
+  from: FocusBlockId
+  direction: 'next' | 'prev'
+}
+
+/** 塊への入場時、対象Viewへ入場フォーカス先の確定を指示する通知（main → 対象View） */
+export interface FocusCycleEnteredPayload {
+  direction: 'next' | 'prev'
+}

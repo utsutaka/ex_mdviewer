@@ -80,8 +80,25 @@ function initKeyboardNavigation(container: HTMLElement): void {
       } else if (event.key === 'Enter') {
         event.preventDefault()
         el.click()
+      } else if (event.key === 'Tab' && !event.shiftKey) {
+        // 塊単位のフォーカス巡回・前方向のみ（039-tab-reorder-keyboard-nav FR-006〜FR-011）。
+        // roving tabindexの項目は一覧内で最後の要素のため、Tabキーは次の塊（本文）へ直接移動する。
+        // Shift+Tabは一覧内の1つ前の要素（×ボタン）へネイティブ挙動で戻るため、ここでは処理しない。
+        event.preventDefault()
+        window.explorerApi.requestFocusCycle('next')
       }
     })
+  })
+}
+
+/**
+ * 塊への入場時（Tab/Shift+Tabで他の塊からエクスプローラーバーへ移動してきた場合）、
+ * 直前にフォーカスしていた項目（roving tabindexで`tabIndex=0`の項目）へフォーカスする
+ * （039-tab-reorder-keyboard-nav、research.md Decision 5、`023-toc-keyboard-nav`と同じ方式）。
+ */
+function initFocusCycleEnteredListener(): void {
+  window.explorerApi.onFocusCycleEntered(() => {
+    getListEl().querySelector<HTMLElement>('[tabindex="0"]')?.focus()
   })
 }
 
@@ -170,6 +187,14 @@ function initExplorerCloseButton(): void {
   const button = document.getElementById('sidebar-explorer-close')
   button?.addEventListener('click', () => {
     setExplorerVisible(!getExplorerVisible())
+  })
+  // ×ボタンはエクスプローラーバー内で最初にフォーカス可能な要素のため、Shift+Tabキーは
+  // 前の塊（tab塊）へ直接移動する（039-tab-reorder-keyboard-nav FR-006〜FR-011）。
+  button?.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.preventDefault()
+      window.explorerApi.requestFocusCycle('prev')
+    }
   })
 }
 
@@ -281,6 +306,7 @@ async function init(): Promise<void> {
   initExplorerCloseButton()
   initMenuExplorerVisibilityToggleListener()
   initExplorerResizeHandle()
+  initFocusCycleEnteredListener()
 }
 
 void init()
