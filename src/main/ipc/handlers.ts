@@ -69,7 +69,8 @@ import {
   openSearchFloatView,
   relayoutViews,
   restoreAndFocusWindow,
-  setActiveTabFileKind
+  setActiveTabFileKind,
+  setActiveTabHasHeadings
 } from '../window'
 
 interface TabRuntimeState {
@@ -787,6 +788,16 @@ export function registerIpcHandlers(): void {
   // ---- 本文View→TOCサイドバーViewへの見出しリスト通知 ----
   ipcMain.on('heading-list-updated', (_event, payload: HeadingListUpdatedPayload) => {
     getSidebarTocView()?.webContents.send('heading-list-updated', payload)
+    // 見出し0件のMarkdown/HTML文書で、中身が空のTOCサイドバー（幅220px相当）だけが
+    // 残ってしまう不具合の修正（003-toc-toggle FR-004、034-toc-filekind-scope由来の
+    // View分割アーキテクチャではfileKindのみでは幅0にならないため、見出し件数も
+    // relayoutViewsの判定に反映させる必要がある）。
+    setActiveTabHasHeadings(payload.headings.length > 0)
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win)
+      syncSearchUiWithTocVisibility(win)
+    }
   })
 
   // ---- raw/rendered表示切替（FR-007） ----

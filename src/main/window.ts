@@ -88,9 +88,30 @@ let searchFloatVisible = false
  */
 let activeTabFileKind: FileKind | null = null
 
+/**
+ * アクティブタブに見出しが1件以上存在するか（003-toc-toggle FR-004の「見出しなし文書は
+ * トグル状態に関わらずTOCサイドバーを表示してはならない」を、034-toc-filekind-scope以降の
+ * View分割アーキテクチャでも幅0として正しく反映するために保持する）。
+ * アクティブタブ切替の起点（`setActiveTabFileKind`）で一旦trueへリセットし、本文View側から
+ * 実際の見出しリストが届いた時点（`heading-list-updated`、ipc/handlers.ts）で確定する。
+ * 見出し情報が届く前の短い間だけ実際より広めにTOC幅を確保してしまう可能性はあるが、
+ * 逆に見出しありのタブへ切り替えた直後にfalseのまま誤って幅0にしてしまう方が実害が大きいため、
+ * 安全側のtrueを初期値・リセット値とする。
+ */
+let activeTabHasHeadings = true
+
 /** アクティブタブのファイル種別を更新する（034-toc-filekind-scope、呼び出し後は`relayoutViews`の再実行が必要） */
 export function setActiveTabFileKind(fileKind: FileKind | null): void {
   activeTabFileKind = fileKind
+  activeTabHasHeadings = true
+}
+
+/**
+ * アクティブタブの見出し有無を更新する（`heading-list-updated`受信時、呼び出し後は
+ * `relayoutViews`の再実行が必要）。
+ */
+export function setActiveTabHasHeadings(hasHeadings: boolean): void {
+  activeTabHasHeadings = hasHeadings
 }
 
 /**
@@ -152,7 +173,7 @@ const SEARCH_FLOAT_MARGIN = 12
  */
 export function isTocSidebarVisible(): boolean {
   const settings = getAppSettings()
-  return settings.tocVisible && isActiveTabTocSupportedFileKind()
+  return settings.tocVisible && isActiveTabTocSupportedFileKind() && activeTabHasHeadings
 }
 
 /**
