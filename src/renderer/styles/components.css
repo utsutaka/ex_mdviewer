@@ -12,6 +12,16 @@
     border-right: 1px solid var(--border-color);
     cursor: pointer;
     outline: none;
+    /*
+     * 041-two-row-tab-bar実機フィードバック対応: Pointer Eventsによるドラッグ並び替え
+     * （039-tab-reorder-keyboard-nav由来）は、マウスでの実際のドラッグ操作時に
+     * タブ内テキスト（.tab-bar__label）の選択が同時に開始されてしまい、
+     * ブラウザ標準のテキスト選択ドラッグと競合してPointer Eventsによる並び替え自体が
+     * 正しく機能しない不具合が実機で確認された（自動テストは合成PointerEventのみを
+     * 使用しておりこの競合を再現しない）。テキスト選択自体を禁止することで解消する。
+     */
+    user-select: none;
+    -webkit-user-drag: none;
 }
 
 /* タブバー横スクロールボタン（029-tab-toc-improvements FR-001a, FR-004, FR-005） */
@@ -83,13 +93,33 @@
  * ドロップ確定時（pointerup）の1回のみに限定した（research.md「残存する技術的リスク」
  * 参照）。`.tab-bar-wrapper`・`.tab-bar`・`.tab-bar-scroll-btn`のflex指定には触れない
  * （research.md Decision 6、FR-004b。過去の本番ビルド限定回帰の再発防止）。
+ *
+ * 041-two-row-tab-bar実機フィードバック対応: `position: relative`のままでは、段をまたいで
+ * 縦方向にtransformで追従させた際、ドラッグ中のタブが自身の親要素（各段の`.tab-bar`、
+ * `overflow-y: hidden`）の境界からはみ出た部分がクリップされ、もう一方の段に重なった
+ * 部分だけ見えなくなる不具合が実機で確認された。`position: fixed`に変更し、JS側
+ * （`initTabDrag`）でドラッグ開始時の`getBoundingClientRect()`を`left`/`top`/`width`/
+ * `height`として明示的に固定することで、`.tab-bar`のoverflow-y: hiddenによる
+ * クリッピングの対象外にする（`position: fixed`の要素は、祖先にtransform等で新たな
+ * containing blockが確立されていない限りoverflow: hiddenの影響を受けない）。
  */
 .tab-bar__tab.is-dragging {
-    position: relative;
-    z-index: 2;
+    position: fixed;
+    z-index: 1000;
     opacity: 0.85;
     cursor: grabbing;
     transition: none;
+    /*
+     * 041-two-row-tab-bar実機フィードバック対応: `position: fixed`によりドラッグ中の
+     * タブ自身がカーソル位置に描画され続けるため、`document.elementFromPoint`
+     * （`findRowAtPoint`、ドロップ対象の段の判定に使用）がクリッピングされなくなった
+     * ドラッグ中のタブ自身を検出してしまい、常に移動元の段だと誤判定する副作用が生じる。
+     * `pointer-events: none`でヒットテストの対象から除外し、カーソル直下にある
+     * 本来の段のコンテナを正しく検出できるようにする。ドラッグ中のポインタイベント自体は
+     * `setPointerCapture`によりこの要素へ直接ルーティングされ続けるため、
+     * `pointer-events: none`の影響を受けない。
+     */
+    pointer-events: none;
 }
 
 /* ドロップ予定位置インジケーター：挿入先タブの左端に縦線を表示する（FR-002） */

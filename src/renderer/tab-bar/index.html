@@ -7,24 +7,55 @@
     <link rel="stylesheet" href="../styles/base.css" />
     <link rel="stylesheet" href="../styles/components.css" />
     <style>
-      /* 033-webcontentsview-search-fix: View全体（body）を.tab-bar-wrapperで埋める */
+      /*
+       * 033-webcontentsview-search-fix: View全体（body）を.tab-bar-wrapperで埋める。
+       * 041-two-row-tab-bar: 上段・下段2組の.tab-bar-wrapperを縦に並べるため、
+       * bodyをcolumn方向のflexコンテナに変更した（二段バーOFF時は下段側がhiddenのため、
+       * 上段側のflex: 1 1 autoが従来通りbody全体を埋める）。
+       */
       body {
         display: flex;
+        flex-direction: column;
         height: 100vh;
       }
       .tab-bar-wrapper {
-        flex: 1 1 auto;
+        /*
+         * 041-two-row-tab-bar実機フィードバック対応: flex-basisを`auto`のままにすると、
+         * 下段（タブ0件、コンテンツの実高さがほぼ0）の「希望する高さ」が上段（タブあり、
+         * 実高さ約36px）よりずっと小さく計算され、bodyの残り空間がflex-growの比率(1:1)で
+         * 均等配分されても最終的な高さが不均等になっていた（例: 上段54px・下段18px）。
+         * flex-basisを0に固定することで、両段の「希望する高さ」を常に0からスタートさせ、
+         * flex-grow(1:1)だけで高さが決まるようにし、二段バー有効時に上段・下段が
+         * 常に均等な高さ（それぞれbody全体の半分）になるようにする。
+         */
+        flex: 1 1 0;
         /* 029-tab-toc-improvements FR-001リグレッション修正: bodyのflex-directionが
-           既定のrowであるため、min-width指定がないとタブ本数分のコンテンツ幅（#tab-bar）
-           に押し広げられ、あふれが発生せず横スクロールボタンが表示されなくなっていた */
+           既定のrowであったため、min-width指定がないとタブ本数分のコンテンツ幅（.tab-bar）
+           に押し広げられ、あふれが発生せず横スクロールボタンが表示されなくなっていた。
+           041-two-row-tab-bar: bodyをcolumn方向へ変更した後もmin-width: 0は
+           横スクロールボタン判定に必要なため維持する */
         min-width: 0;
+      }
+      /*
+       * 041-two-row-tab-bar: 下段が非表示（二段バーOFF）の場合、上段のみでbody全体を埋める。
+       * .tab-bar-wrapperはbase.cssで著者スタイルのdisplay: flexを持つため、hidden属性の
+       * 既定挙動（UAスタイルのdisplay: none）が上書きされてしまう。既存の
+       * .tab-bar-scroll-btn[hidden]（components.css）と同じパターンで明示的に指定する。
+       */
+      .tab-bar-wrapper[hidden] {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <div class="tab-bar-wrapper">
+    <div class="tab-bar-wrapper" data-row="upper">
       <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--left" aria-label="タブを左にスクロール" hidden></button>
-      <div id="tab-bar" class="tab-bar"></div>
+      <div id="tab-bar-upper" class="tab-bar" data-row="upper"></div>
+      <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--right" aria-label="タブを右にスクロール" hidden></button>
+    </div>
+    <div class="tab-bar-wrapper" data-row="lower" hidden>
+      <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--left" aria-label="タブを左にスクロール" hidden></button>
+      <div id="tab-bar-lower" class="tab-bar" data-row="lower"></div>
       <button type="button" class="tab-bar-scroll-btn tab-bar-scroll-btn--right" aria-label="タブを右にスクロール" hidden></button>
     </div>
     <script type="module" src="./main.ts"></script>

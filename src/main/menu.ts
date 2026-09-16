@@ -144,6 +144,14 @@ function buildEditMenuItems(): Electron.MenuItemConstructorOptions[] {
       click: () => {
         getContentView()?.webContents.send('menu-content-width-toggle-requested')
       }
+    },
+    {
+      label: '二段バーを利用',
+      type: 'checkbox',
+      checked: settings.twoRowTabBarEnabled,
+      click: () => {
+        getTabBarView()?.webContents.send('menu-two-row-tab-bar-toggle-requested')
+      }
     }
   ]
 }

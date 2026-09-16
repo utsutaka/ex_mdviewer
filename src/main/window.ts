@@ -150,8 +150,18 @@ export function getContentView(): WebContentsView | null {
   return contentView
 }
 
-/** タブバーの高さ（`base.css`の`.tab-bar-wrapper`と一致させる、FR-006） */
-const TAB_BAR_HEIGHT = 36
+/** タブバーの高さ（1段時、`base.css`の`.tab-bar-wrapper`と一致させる、FR-006） */
+const TAB_BAR_HEIGHT_SINGLE = 36
+/**
+ * タブバーの高さ（2段時、041-two-row-tab-bar research.md Decision 2）。
+ * 1段の高さちょうど2倍の固定値とし、下段がタブ0件の受け皿状態でも高さは変えない。
+ */
+const TAB_BAR_HEIGHT_TWO_ROW = TAB_BAR_HEIGHT_SINGLE * 2
+
+/** `AppSettings.twoRowTabBarEnabled`に応じたタブバーの実効高さを返す（041-two-row-tab-bar research.md Decision 2） */
+function getTabBarHeight(): number {
+  return getAppSettings().twoRowTabBarEnabled ? TAB_BAR_HEIGHT_TWO_ROW : TAB_BAR_HEIGHT_SINGLE
+}
 
 /**
  * フロート検索Viewの既定サイズ（本文View右上に重ねて配置、FR-006）。
@@ -246,19 +256,20 @@ export function relayoutViews(win: BrowserWindow, options?: RelayoutOptions): vo
   // （PDF・JSON・YAML・XML、またはタブなし）の場合、tocVisibleの値に関わらずTOC幅を0にする。
   // settings.tocWidth自体は変更しないため、対応種別のタブへ戻れば従来の幅で復元される。
   const tocWidth = isTocSidebarVisible() ? sanitizeWidth(options?.tocWidthOverride ?? settings.tocWidth, 220) : 0
-  const contentHeight = Math.max(0, height - TAB_BAR_HEIGHT)
+  const tabBarHeight = getTabBarHeight()
+  const contentHeight = Math.max(0, height - tabBarHeight)
   const contentWidth = Math.max(0, width - explorerWidth - tocWidth)
 
-  tabBarView.setBounds({ x: 0, y: 0, width, height: TAB_BAR_HEIGHT })
-  sidebarExplorerView.setBounds({ x: 0, y: TAB_BAR_HEIGHT, width: explorerWidth, height: contentHeight })
-  contentView.setBounds({ x: explorerWidth, y: TAB_BAR_HEIGHT, width: contentWidth, height: contentHeight })
-  sidebarTocView.setBounds({ x: explorerWidth + contentWidth, y: TAB_BAR_HEIGHT, width: tocWidth, height: contentHeight })
+  tabBarView.setBounds({ x: 0, y: 0, width, height: tabBarHeight })
+  sidebarExplorerView.setBounds({ x: 0, y: tabBarHeight, width: explorerWidth, height: contentHeight })
+  contentView.setBounds({ x: explorerWidth, y: tabBarHeight, width: contentWidth, height: contentHeight })
+  sidebarTocView.setBounds({ x: explorerWidth + contentWidth, y: tabBarHeight, width: tocWidth, height: contentHeight })
 
   if (searchFloatView) {
     const floatX = explorerWidth + Math.max(0, contentWidth - SEARCH_FLOAT_WIDTH - SEARCH_FLOAT_MARGIN)
     searchFloatView.setBounds({
       x: floatX,
-      y: TAB_BAR_HEIGHT + SEARCH_FLOAT_MARGIN,
+      y: tabBarHeight + SEARCH_FLOAT_MARGIN,
       width: Math.min(SEARCH_FLOAT_WIDTH, contentWidth),
       height: SEARCH_FLOAT_HEIGHT
     })

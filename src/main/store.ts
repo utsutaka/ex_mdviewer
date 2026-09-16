@@ -33,7 +33,8 @@ const defaultAppSettings: AppSettings = {
   contentWidthMode: 'readable',
   folderHistory: [],
   explorerVisible: true,
-  explorerWidth: 240
+  explorerWidth: 240,
+  twoRowTabBarEnabled: false
 }
 
 const defaults: PersistedStore = {

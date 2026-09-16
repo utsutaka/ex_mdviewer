@@ -77,7 +77,8 @@ describe('005-native-menu-save-toggle: 設定保存有無', () => {
       contentWidthMode: 'readable',
       folderHistory: [],
       explorerVisible: true,
-      explorerWidth: 240
+      explorerWidth: 240,
+      twoRowTabBarEnabled: false
     })
   })
 

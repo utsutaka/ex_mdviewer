@@ -103,6 +103,8 @@ export interface AppSettings {
   explorerVisible: boolean
   /** エクスプローラーバーの幅（ピクセル単位の整数値、150〜480、アプリ全体で共通。038-explorer-sidebar FR-011〜FR-013） */
   explorerWidth: number
+  /** タブバーの二段表示（上段・下段）の利用有無（アプリ全体で共通、既定false。041-two-row-tab-bar FR-001〜FR-003） */
+  twoRowTabBarEnabled: boolean
 }
 
 /** electron-storeに永続化するスキーマ全体（constitution原則VI） */
@@ -432,4 +434,11 @@ export interface RequestFocusCycleRequest {
 /** 塊への入場時、対象Viewへ入場フォーカス先の確定を指示する通知（main → 対象View） */
 export interface FocusCycleEnteredPayload {
   direction: 'next' | 'prev'
+}
+
+// ---- 041-two-row-tab-bar: タブバーの二段化 ----
+
+/** タブバーの二段表示ON/OFF確定の通知（renderer → main、`explorer-visibility-changed`と同型） */
+export interface TwoRowTabBarVisibilityChangedRequest {
+  enabled: boolean
 }

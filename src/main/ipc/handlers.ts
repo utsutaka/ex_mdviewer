@@ -37,6 +37,7 @@ import type {
   TocVisibilityChangedRequest,
   TocWidthChangedRequest,
   TocWidthPreviewRequest,
+  TwoRowTabBarVisibilityChangedRequest,
   UnsupportedFilePayload,
   YamlDocumentGroup,
   ZoomDeltaRequest
@@ -885,6 +886,16 @@ export function registerIpcHandlers(): void {
   // ---- エクスプローラーバー表示・非表示（038-explorer-sidebar FR-006〜FR-008） ----
   ipcMain.on('explorer-visibility-changed', (_event, request: ExplorerVisibilityChangedRequest) => {
     setAppSettings({ ...getAppSettings(), explorerVisible: request.visible })
+    refreshAppMenu()
+    const win = getMainWindow()
+    if (win) {
+      relayoutViews(win)
+    }
+  })
+
+  // ---- タブバーの二段表示ON/OFF（041-two-row-tab-bar FR-001〜FR-003, contracts/ipc-contract-delta.md） ----
+  ipcMain.on('two-row-tab-bar-visibility-changed', (_event, request: TwoRowTabBarVisibilityChangedRequest) => {
+    setAppSettings({ ...getAppSettings(), twoRowTabBarEnabled: request.enabled })
     refreshAppMenu()
     const win = getMainWindow()
     if (win) {

@@ -8,7 +8,8 @@ import type {
   FocusTabPayload,
   RequestFocusCycleRequest,
   TabCreatedPayload,
-  Theme
+  Theme,
+  TwoRowTabBarVisibilityChangedRequest
 } from '@shared/types'
 
 /** タブバーView向けAPI */
@@ -34,6 +35,10 @@ const api = {
   },
   themeChanged(theme: Theme): void {
     ipcRenderer.send('theme-changed', { theme })
+  },
+  twoRowTabBarVisibilityChanged(enabled: boolean): void {
+    const request: TwoRowTabBarVisibilityChangedRequest = { enabled }
+    ipcRenderer.send('two-row-tab-bar-visibility-changed', request)
   },
   requestSearchFocus(): void {
     ipcRenderer.send('request-search-focus')
@@ -83,6 +88,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, request: { theme: Theme }): void => callback(request.theme)
     ipcRenderer.on('theme-updated', listener)
     return () => ipcRenderer.removeListener('theme-updated', listener)
+  },
+  onMenuTwoRowTabBarToggleRequested(callback: () => void): () => void {
+    const listener = (): void => callback()
+    ipcRenderer.on('menu-two-row-tab-bar-toggle-requested', listener)
+    return () => ipcRenderer.removeListener('menu-two-row-tab-bar-toggle-requested', listener)
   }
 }
 
