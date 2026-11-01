@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { generateThirdPartyNotices } from './generate-third-party-notices.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = resolve(root, 'out')
@@ -42,6 +43,15 @@ if (usageIndex === -1) {
 const usageSection = readmeContent.slice(usageIndex + usageHeading.length).trimStart()
 writeFileSync(resolve(stageDir, 'README.md'), `# mdviewer\n\n${usageSection}`)
 
+console.log('LICENSEをコピーしています...')
+// 配布ZIPだけを受け取った人にも、本アプリのライセンス条件(MIT)が伝わるようにする
+const licenseSrc = resolve(root, 'LICENSE')
+if (!existsSync(licenseSrc)) {
+  console.error('LICENSEが見つかりません。')
+  process.exit(1)
+}
+cpSync(licenseSrc, resolve(stageDir, 'LICENSE'))
+
 console.log('配布用package.jsonを作成しています...')
 const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'))
 const stagePkg = {
@@ -74,6 +84,20 @@ execFileSync(
     env: { ...process.env, ELECTRON_GET_USE_PROXY: 'true' }
   }
 )
+
+console.log('第三者ライセンス一覧を生成しています...')
+// node_modulesを同梱しない構成へ変更しても、各OSSの著作権表示・ライセンス文を
+// 配布物に残せるよう、全文を1ファイルに集約しておく
+try {
+  const warnings = generateThirdPartyNotices(
+    stageDir,
+    resolve(stageDir, 'THIRD_PARTY_NOTICES.txt')
+  )
+  warnings.forEach((w) => console.warn(`警告: ${w}`))
+} catch (error) {
+  console.error(`第三者ライセンス一覧の生成に失敗しました: ${error.message}`)
+  process.exit(1)
+}
 
 console.log('起動用バッチファイルを作成しています...')
 // node_modules\.bin\electron.cmd はNode.js自体を必要とするため使わず、
